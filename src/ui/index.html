@@ -85,6 +85,12 @@
   .howto h3 { margin:20px 0 6px; font-size:15px; } .howto ol, .howto ul { margin:4px 0 8px 22px; padding:0; } .howto li { margin:4px 0; }
   code { background:var(--soft); border:1px solid var(--line); padding:1px 6px; border-radius:5px; font-family:Consolas, monospace; font-size:12.5px; }
   #evilBadge, #evilPic { display:none; }
+  #toast { position:fixed; right:24px; bottom:24px; z-index:900; display:flex; flex-direction:column; gap:8px; }
+  .toast { background:var(--ink); color:var(--card); padding:12px 18px; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.25); font-size:14px;
+           animation:toastIn .2s ease-out, toastOut .4s ease-in 3.2s forwards; }
+  .toast.ok { background:#178a4c; color:#fff; } .toast.err { background:#c4372d; color:#fff; }
+  @keyframes toastIn { from { transform:translateY(12px); opacity:0; } to { transform:none; opacity:1; } }
+  @keyframes toastOut { to { opacity:0; transform:translateY(8px); } }
 
   /* ---------- EVIL QA Runner: data writing is unlocked (ALLOW_DATA_ON_DOTNET / ALLOW_RISKY_PAGES) ---------- */
   body.evil {
@@ -136,6 +142,7 @@
   <button data-t="env">Settings (.env)</button>
   <button data-t="howto">How to use</button>
 </nav>
+<div id="toast"></div>
 <main>
   <div id="setupBanner"></div>
 
@@ -325,10 +332,15 @@ const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAl
 const MODULES = ['Login','Dashboard','Employees','Attendance','Payroll','Payroll Addition','Payroll Deduction','Deduction Monitor','Benefits',
   'Leave Monitor','Users','Approving Officer','Approval Requests - Payroll','Approval Requests - Leave','Reports','Activity Log','Profile','Remnant Pages','Bypass / Security'];
 const ROLES = ['newqrphoadmin','payroll_officer','payroll_staff','payroll_approving_officer','payroll_mgmt','leave_immediate_head','leave_campus_admin','employee','Invalid Roles','No Roles'];
+const DEFAULTS_KEY = 'qaRunner.defaultSettings';
 let ENV = {}, SCHEMA = [], STATUS = null, COVERAGE = null, current = null;
 const api = (p, o = {}) => fetch(p, { ...o, headers: { 'Content-Type': 'application/json' } }).then(async r => { const t = await r.text(); try { const j = JSON.parse(t); if (!r.ok) throw new Error(j.error || r.status); return j; } catch (e) { if (r.ok) return t; throw e; } });
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 const q = a => (/\s/.test(a) ? `"${a}"` : a);
+function toast(msg, kind = 'ok') {
+  const t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = msg;
+  $('#toast').appendChild(t); setTimeout(() => t.remove(), 3700);
+}
 const segVal = id => $(`#${id} button.on`).dataset.v;
 $$('.seg').forEach(seg => seg.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') return; seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === e.target)); seg.dispatchEvent(new Event('change')); }));
 
@@ -360,18 +372,43 @@ function renderEnvForm() {
   html += '</div>';
   if (extra.length) html += `<p class="small muted" style="margin-top:14px">Also in your .env (kept as-is): ${extra.map(esc).join(', ')}</p>`;
   html += `<h2 style="margin:18px 0 10px">Add a variable</h2><div class="row"><input type="text" id="newKey" placeholder="NAME_IN_CAPS"><input type="text" id="newVal" placeholder="value" style="min-width:320px"><button class="btn" id="addVar" type="button">Add</button></div>
-    <div class="row" style="margin-top:18px"><button class="btn primary" id="envSave" type="button">Save settings</button><span class="small muted" id="envMsg"></span></div>`;
+    <div class="row" style="margin-top:18px">
+      <button class="btn primary" id="envSave" type="button">Save settings</button>
+      <button class="btn" id="envMakeDefault" type="button">Save as my default</button>
+      <button class="btn" id="envReset" type="button">Reset to default</button>
+      <span class="small muted" id="envMsg"></span>
+    </div>
+    <p class="small muted" style="margin-top:8px">"Save as my default" keeps a copy of these settings in this browser (on this computer only).
+      "Reset to default" puts that copy back in the form, or the built-in defaults if you never saved one. Click <b>Save settings</b> afterwards to use them.</p>`;
   $('#envForm').innerHTML = html;
   $$('[data-show]').forEach(b => b.onclick = () => { const i = document.getElementById(b.dataset.show); i.type = i.type === 'password' ? 'text' : 'password'; b.textContent = i.type === 'password' ? 'Show' : 'Hide'; });
   $('#addVar').onclick = () => { const k = $('#newKey').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_'); if (!k) return; ENV[k] = $('#newVal').value; renderEnvForm(); $('#envMsg').textContent = `Added ${k}. Click Save settings to keep it.`; };
+  const formValues = () => { const values = { ...ENV }; $$('#envForm input[data-key]').forEach(i => values[i.dataset.key] = i.value.trim()); return values; };
   $('#envSave').onclick = async () => {
-    const values = { ...ENV }; $$('#envForm input[data-key]').forEach(i => values[i.dataset.key] = i.value.trim());
-    await api('/api/env', { method: 'POST', body: JSON.stringify({ values }) }); $('#envMsg').textContent = 'Saved.'; await loadEnv();
+    try {
+      const values = formValues();
+      await api('/api/env', { method: 'POST', body: JSON.stringify({ values }) });
+      await loadEnv();
+      toast('Settings saved to .env');
+      $('#envMsg').textContent = 'Last saved ' + new Date().toLocaleTimeString();
+    } catch (e) { toast('Could not save: ' + e.message, 'err'); }
+  };
+  $('#envMakeDefault').onclick = () => {
+    try { localStorage.setItem(DEFAULTS_KEY, JSON.stringify(formValues())); toast('Saved as your default (this browser only)'); }
+    catch (e) { toast('This browser blocked saving the default: ' + e.message, 'err'); }
+  };
+  $('#envReset').onclick = async () => {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(DEFAULTS_KEY) || 'null'); } catch (_) {}
+    const values = saved || Object.fromEntries(SCHEMA.map(f => [f.key, f.placeholder && !f.secret ? f.placeholder : '']));
+    if (!saved && !(await confirmBox('Reset to built-in defaults?', '<p>You have not saved a default yet, so this clears every field (accounts, links, token) back to the built-in defaults. Nothing is written until you click <b>Save settings</b>.</p>'))) return;
+    for (const f of SCHEMA) { const i = document.getElementById('e_' + f.key); if (i) i.value = values[f.key] ?? ''; }
+    toast(saved ? 'Your default is back in the form. Click Save settings to use it.' : 'Built-in defaults are in the form. Click Save settings to use them.');
   };
 }
 $('#envMode').addEventListener('change', () => { const raw = segVal('envMode') === 'raw'; $('#envForm').style.display = raw ? 'none' : ''; $('#envRaw').style.display = raw ? '' : 'none'; });
 $('#envCopy').onclick = () => { navigator.clipboard.writeText($('#envText').value); $('#envCopy').textContent = 'Copied'; setTimeout(() => $('#envCopy').textContent = 'Copy', 1500); };
-$('#envSaveRaw').onclick = async () => { await api('/api/env', { method: 'POST', body: JSON.stringify({ raw: $('#envText').value }) }); await loadEnv(); alert('Saved.'); };
+$('#envSaveRaw').onclick = async () => { try { await api('/api/env', { method: 'POST', body: JSON.stringify({ raw: $('#envText').value }) }); await loadEnv(); toast('Pasted settings saved to .env'); } catch (e) { toast('Could not save: ' + e.message, 'err'); } };
 
 // ---------- run tab
 function renderRoles() {
