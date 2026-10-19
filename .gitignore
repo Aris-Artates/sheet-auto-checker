@@ -1,0 +1,10 @@
+node_modules/
+.env
+results/
+# Evil-mode picture: copyrighted image, kept local only
+src/ui/evil.png
+# Oversized test files are generated per machine (npm run make-test-files)
+test-files/too-large-*
+test-files/*-too-large-*
+# Local-only setup notes with internal links
+SETUP.md

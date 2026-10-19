@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QA Runner</title>
+<style>
+  /* ---------- default theme: calm, friendly, readable ---------- */
+  :root {
+    --bg:#f4f6fa; --card:#ffffff; --ink:#1e2433; --muted:#5f6b7f; --line:#e3e8ef; --soft:#f7f9fc;
+    --brand:#3366cc; --brand-ink:#ffffff; --brand-soft:#eaf1ff; --head1:#2f5fb8; --head2:#4d7fd6; --head-ink:#ffffff;
+    --pass:#178a4c; --pass-bg:#e7f6ee; --fail:#c4372d; --fail-bg:#fdeceb; --warn:#a85a00; --warn-bg:#fff5e6; --ns:#8a94a6;
+    --log-bg:#0f172a; --log-ink:#d6deeb; --radius:12px; --shadow:0 1px 2px rgba(16,24,40,.04), 0 2px 8px rgba(16,24,40,.05);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 "Segoe UI", system-ui, sans-serif; background:var(--bg); color:var(--ink); transition:background .4s, color .4s; }
+  header { background:linear-gradient(120deg, var(--head1), var(--head2)); color:var(--head-ink); padding:18px 28px; display:flex; align-items:center; gap:16px; }
+  header .logo { width:42px; height:42px; border-radius:11px; background:rgba(255,255,255,.18); display:grid; place-items:center; font-weight:700; font-size:18px; letter-spacing:.5px; }
+  header h1 { margin:0; font-size:20px; font-weight:650; }
+  header .sub { opacity:.85; font-size:13px; }
+  header .spacer { flex:1; }
+  header a { color:var(--head-ink); text-decoration:none; background:rgba(255,255,255,.16); padding:7px 14px; border-radius:999px; font-size:13px; }
+  header a:hover { background:rgba(255,255,255,.26); }
+  nav { display:flex; gap:4px; padding:8px 28px 0; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; overflow-x:auto; }
+  nav button { border:0; background:none; padding:10px 16px 12px; font:inherit; font-size:14px; color:var(--muted); cursor:pointer; border-bottom:3px solid transparent; border-radius:8px 8px 0 0; white-space:nowrap; }
+  nav button:hover { color:var(--ink); background:var(--soft); }
+  nav button.on { color:var(--brand); border-color:var(--brand); font-weight:600; }
+  main { padding:24px 28px 70px; max-width:1180px; margin:0 auto; }
+  .tab { display:none; } .tab.on { display:block; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px 22px; margin-bottom:18px; box-shadow:var(--shadow); }
+  .card h2 { margin:0 0 4px; font-size:17px; } .card p.hint { margin:0 0 16px; color:var(--muted); font-size:14px; }
+  .step { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--brand-soft); color:var(--brand); font-size:12px; font-weight:700; margin-right:6px; }
+  .section-label { font-size:13px; font-weight:600; color:var(--ink); margin:0 0 8px; }
+  .row { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; }
+  label.f { display:flex; flex-direction:column; gap:5px; font-size:13px; font-weight:600; color:var(--ink); }
+  input[type=text], input[type=password], input[type=number], select, textarea { font:inherit; font-size:14px; padding:9px 11px; border:1px solid #cfd6e0; border-radius:8px; background:#fff; color:var(--ink); }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-soft); }
+  textarea { width:100%; font-family:Consolas, monospace; font-size:13px; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { display:inline-flex; align-items:center; gap:7px; padding:7px 13px; border:1px solid var(--line); border-radius:999px; background:#fff; cursor:pointer; user-select:none; font-size:13.5px; transition:background .15s, border-color .15s; }
+  .chip:hover { border-color:#b8c4d6; }
+  .chip:has(input:checked) { background:var(--brand-soft); border-color:#9db8ec; color:#1f4fa3; }
+  .chip input { margin:0; accent-color:var(--brand); } .chip.off { opacity:.45; cursor:not-allowed; }
+  .chip.risky { border-color:#f2b97a; background:var(--warn-bg); }
+  .linkbtn { background:none; border:0; color:var(--brand); cursor:pointer; font:inherit; font-size:13px; padding:0 4px; }
+  button.btn { font:inherit; font-size:14px; padding:9px 18px; border-radius:8px; border:1px solid #cfd6e0; background:#fff; cursor:pointer; transition:filter .15s, background .15s; }
+  button.btn:hover { background:var(--soft); }
+  button.btn.primary { background:var(--brand); border-color:var(--brand); color:var(--brand-ink); font-weight:600; }
+  button.btn.primary:hover { filter:brightness(1.08); }
+  button.btn.danger { background:var(--fail); border-color:var(--fail); color:#fff; font-weight:600; }
+  button.btn:disabled { opacity:.5; cursor:not-allowed; }
+  details.cmdbox summary { cursor:pointer; color:var(--muted); font-size:13px; margin:14px 0 6px; }
+  .cmd { font-family:Consolas, monospace; font-size:12.5px; background:var(--log-bg); color:var(--log-ink); padding:11px 13px; border-radius:8px; overflow-x:auto; white-space:pre; }
+  .log { font-family:Consolas, monospace; font-size:12.5px; background:var(--log-bg); color:var(--log-ink); padding:12px 14px; border-radius:8px; height:400px; overflow:auto; white-space:pre-wrap; }
+  .log .p { color:#6ee7a0; } .log .f { color:#ff9b91; } .log .w { color:#ffd38a; }
+  .stats { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 14px; }
+  .stat { padding:10px 16px; border-radius:10px; background:var(--soft); border:1px solid var(--line); min-width:118px; font-size:13px; color:var(--muted); }
+  .stat b { display:block; font-size:22px; color:var(--ink); }
+  .stat.pass { background:var(--pass-bg); border-color:#bfe6cf; } .stat.pass b { color:var(--pass); }
+  .stat.fail { background:var(--fail-bg); border-color:#f5c6c2; } .stat.fail b { color:var(--fail); }
+  .stat.warn { background:var(--warn-bg); border-color:#f7d9b0; } .stat.warn b { color:var(--warn); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12.5px; background:var(--soft); position:sticky; top:0; }
+  tr[data-i]:hover td { background:var(--soft); }
+  .bar { display:flex; height:10px; border-radius:5px; overflow:hidden; background:#e8ecf2; min-width:150px; }
+  .bar span { display:block; } .bp { background:#2fb36b; } .bf { background:#e5534b; } .bb { background:#f5a524; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11.5px; font-weight:600; }
+  .tag.Pass { background:var(--pass-bg); color:var(--pass); } .tag.Fail { background:var(--fail-bg); color:var(--fail); }
+  .muted { color:var(--muted); } .small { font-size:13px; }
+  .secret-wrap { display:flex; gap:6px; } .secret-wrap input { flex:1; min-width:260px; }
+  .envgrid { display:grid; grid-template-columns:230px 1fr; gap:10px 16px; align-items:center; }
+  .envgrid .help { grid-column:2; margin-top:-6px; font-size:12.5px; color:var(--muted); }
+  .seg { display:inline-flex; border:1px solid #cfd6e0; border-radius:8px; overflow:hidden; background:#fff; }
+  .seg button { border:0; background:transparent; padding:8px 14px; font:inherit; font-size:13.5px; cursor:pointer; color:var(--muted); }
+  .seg button.on { background:var(--brand); color:#fff; font-weight:600; }
+  .modal { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; align-items:center; justify-content:center; z-index:50; }
+  .modal.on { display:flex; }
+  .modal .box { background:var(--card); color:var(--ink); border-radius:14px; padding:24px; width:min(640px, 92vw); max-height:86vh; overflow:auto; box-shadow:0 20px 50px rgba(0,0,0,.25); }
+  .modal.red .box { border:4px solid var(--fail); } .modal.red h3 { color:var(--fail); }
+  .banner { padding:12px 16px; border-radius:10px; margin-bottom:14px; font-size:14px; }
+  .banner.warn { background:var(--warn-bg); color:var(--warn); border:1px solid #f7d9b0; }
+  .banner.err { background:var(--fail-bg); color:var(--fail); border:1px solid #f5c6c2; }
+  .banner.ok { background:var(--pass-bg); color:var(--pass); border:1px solid #bfe6cf; }
+  .howto h3 { margin:20px 0 6px; font-size:15px; } .howto ol, .howto ul { margin:4px 0 8px 22px; padding:0; } .howto li { margin:4px 0; }
+  code { background:var(--soft); border:1px solid var(--line); padding:1px 6px; border-radius:5px; font-family:Consolas, monospace; font-size:12.5px; }
+  #evilBadge, #evilPic { display:none; }
+
+  /* ---------- EVIL QA Runner: data writing is unlocked (ALLOW_DATA_ON_DOTNET / ALLOW_RISKY_PAGES) ---------- */
+  body.evil {
+    --bg:#140606; --card:#1f0a0a; --ink:#ffe7d6; --muted:#e0a48a; --line:#5a1a12; --soft:#2a0d0b;
+    --brand:#ff4b1f; --brand-ink:#1a0505; --brand-soft:#4a1208; --head1:#3a0000; --head2:#b3200f; --head-ink:#fff2e6;
+    --pass:#7dff9e; --pass-bg:#0f2a17; --fail:#ff5a3d; --fail-bg:#3b0c07; --warn:#ffb347; --warn-bg:#3a1d05;
+    --log-bg:#0a0202; --log-ink:#ffcfb8; --shadow:0 0 0 1px #5a1a12, 0 6px 24px rgba(255,60,20,.12);
+    background: radial-gradient(1200px 500px at 50% 110%, rgba(255,80,20,.22), transparent 60%), var(--bg);
+    background-attachment: fixed;
+  }
+  body.evil header { background:linear-gradient(180deg, #000 0%, #3a0000 45%, #b3200f 100%); border-bottom:2px solid #ff4b1f; box-shadow:0 6px 30px rgba(255,60,20,.45); }
+  body.evil header .logo { background:#ff4b1f; color:#1a0505; box-shadow:0 0 18px #ff4b1f; animation:ember 2.2s ease-in-out infinite; }
+  body.evil header h1 { font-family:"Georgia", serif; letter-spacing:1px; text-shadow:0 0 12px rgba(255,90,40,.8); }
+  body.evil #evilPic { display:block; height:64px; border-radius:8px; border:2px solid #ff4b1f; box-shadow:0 0 18px rgba(255,75,31,.6); margin:-6px 0; }
+  body.evil #evilBadge { display:inline-block; background:#ff4b1f; color:#1a0505; font-weight:800; font-size:12px; padding:5px 12px; border-radius:999px; letter-spacing:.6px; animation:ember 1.6s ease-in-out infinite; }
+  body.evil nav { background:#1a0707; }
+  body.evil input[type=text], body.evil input[type=password], body.evil input[type=number], body.evil select, body.evil textarea, body.evil .seg, body.evil .chip, body.evil button.btn { background:#2a0d0b; color:var(--ink); border-color:#6b2316; }
+  body.evil .chip:has(input:checked) { background:#5a1408; border-color:#ff4b1f; color:#ffe7d6; }
+  body.evil button.btn.primary { background:linear-gradient(180deg, #ff6a3d, #c4210c); color:#fff; border-color:#ff4b1f; box-shadow:0 0 14px rgba(255,75,31,.45); }
+  body.evil .bar { background:#3a0f0a; }
+  body.evil code { background:#2a0d0b; border-color:#5a1a12; }
+  /* Evil flash: a fixed full-screen layer (stays centred wherever the page is scrolled).
+     The whole picture flashes in, holds for a blink, then fades out. */
+  #evilFlash { position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:1000; display:none; align-items:center; justify-content:center;
+               pointer-events:none; background:rgba(90,0,0,.6); opacity:0; }
+  #evilFlash img { height:85vh; width:auto; max-width:92vw; object-fit:contain; border:6px solid #ff4b1f; border-radius:14px; box-shadow:0 0 90px #ff4b1f; }
+  #evilFlash.go { display:flex; animation:evilFlash 1.1s ease-out forwards; }
+  #evilFlash.go img { animation:evilPop 1.1s ease-out forwards; }
+  @keyframes evilFlash { 0% { opacity:0; } 8% { opacity:1; } 30% { opacity:1; } 100% { opacity:0; } }
+  @keyframes evilPop { 0% { transform:scale(.85); } 8% { transform:scale(1.04); } 30% { transform:scale(1); } 100% { transform:scale(.92); } }
+  @keyframes ember { 0%,100% { box-shadow:0 0 8px #ff4b1f; } 50% { box-shadow:0 0 22px #ffb347; } }
+</style>
+</head>
+<body>
+<div id="evilFlash"><img src="/evil.png" alt="" onerror="this.parentNode.remove()"></div>
+<header>
+  <div class="logo" id="logo">QA</div>
+  <div><h1 id="appTitle">QA Runner</h1><div class="sub" id="appSub">Automated checks for the QA Role Access Testing sheet</div></div>
+  <div class="spacer"></div>
+  <img id="evilPic" src="/evil.png" alt="" onerror="this.remove()">
+  <span id="evilBadge">DATA WRITING UNLOCKED</span>
+  <a id="sheetLink" href="#" target="_blank" rel="noopener" style="display:none">Open QA sheet</a>
+</header>
+<nav id="tabs">
+  <button data-t="run" class="on">Run tests</button>
+  <button data-t="retest">Retest</button>
+  <button data-t="summary">Results summary</button>
+  <button data-t="data">Data tests</button>
+  <button data-t="env">Settings (.env)</button>
+  <button data-t="howto">How to use</button>
+</nav>
+<main>
+  <div id="setupBanner"></div>
+
+  <!-- ===================== RUN ===================== -->
+  <section class="tab on" id="t-run">
+    <div class="card">
+      <h2>Role access tests</h2>
+      <p class="hint">Opens each page as each role and checks it opens or is blocked as the sheet expects. Read-only: never changes data.</p>
+      <div style="margin-bottom:16px">
+        <p class="section-label"><span class="step">1</span>Roles <span class="small muted" style="font-weight:400">(greyed out = no account in Settings)</span>
+          <button class="linkbtn" type="button" data-all="roleChips">All</button><button class="linkbtn" type="button" data-none="roleChips">None</button></p>
+        <div class="chips" id="roleChips"></div>
+      </div>
+      <div style="margin-bottom:16px">
+        <p class="section-label"><span class="step">2</span>Modules <span class="small muted" style="font-weight:400">(all ticked = everything)</span>
+          <button class="linkbtn" type="button" data-all="moduleChips">All</button><button class="linkbtn" type="button" data-none="moduleChips">None</button></p>
+        <div class="chips" id="moduleChips"></div>
+      </div>
+      <p class="section-label"><span class="step">3</span>Options</p>
+      <div class="row">
+        <label class="f">Environment<select id="runEnv"><option value="vercel">Vercel</option><option value="dotnet">.NET</option><option value="both">Both</option></select></label>
+        <label class="f">Only these IDs (optional)<input type="text" id="runOnly" placeholder="PO-0001,PO-0042"></label>
+        <label class="f">Screenshots<select id="runShots"><option value="fail">Failures</option><option value="all">All</option><option value="none">None</option></select></label>
+        <label class="chip"><input type="checkbox" id="runPush"> Write results to sheet</label>
+        <label class="chip"><input type="checkbox" id="runHeaded"> Show browser</label>
+      </div>
+      <details class="cmdbox"><summary>Show the command (to run it from a terminal)</summary><div class="cmd" id="runCmd"></div></details>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="runDry">Preview (no browser)</button>
+        <button class="btn primary" id="runGo">Run tests</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== RETEST ===================== -->
+  <section class="tab" id="t-retest">
+    <div class="card">
+      <h2>Retest from the sheet's latest results</h2>
+      <p class="hint">Reads every test's latest Vercel / .NET result from the sheet and builds the run for you. Failed and passed are separate, so you can recheck fixes without re-running everything.</p>
+      <div class="row">
+        <button class="btn primary" id="loadStatus">Load latest results</button>
+        <span class="small muted" id="statusInfo"></span>
+      </div>
+    </div>
+    <div class="card" id="retestCard" style="display:none">
+      <div class="row" style="margin-bottom:10px">
+        <label class="f">Which<div class="seg" id="rtWhich"><button data-v="Fail" class="on">Failed</button><button data-v="Pass">Passed</button><button data-v="Blocked">Blocked</button></div></label>
+        <label class="f">Environment<div class="seg" id="rtEnv"><button data-v="vercel" class="on">Vercel</button><button data-v="dotnet">.NET</button></div></label>
+        <label class="f">Kind<div class="seg" id="rtKind"><button data-v="access" class="on">Access tests</button><button data-v="data">Data tests</button></div></label>
+        <label class="chip"><input type="checkbox" id="rtPush" checked> Write results to sheet</label>
+      </div>
+      <div class="stats" id="rtStats"></div>
+      <p class="small muted" style="margin:6px 0 4px">Suggested command:</p>
+      <div class="cmd" id="rtCmd"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="rtCopy">Copy ID list</button>
+        <button class="btn primary" id="rtGo">Retest these</button>
+      </div>
+      <details style="margin-top:12px"><summary class="small muted">Show the IDs</summary><div class="small" id="rtIds" style="max-height:200px;overflow:auto;margin-top:6px"></div></details>
+    </div>
+  </section>
+
+  <!-- ===================== SUMMARY ===================== -->
+  <section class="tab" id="t-summary">
+    <div class="card">
+      <h2>Pass / fail per category</h2>
+      <p class="hint">Scraped from the sheet's latest results. Click a row to see its failed tests.</p>
+      <div class="row">
+        <button class="btn primary" id="loadSummary">Load from sheet</button>
+        <label class="f">Environment<div class="seg" id="smEnv"><button data-v="vercel" class="on">Vercel</button><button data-v="dotnet">.NET</button></div></label>
+        <label class="f">Group by<div class="seg" id="smBy"><button data-v="sheet" class="on">Sheet</button><button data-v="module">Module</button><button data-v="both">Sheet + module</button></div></label>
+      </div>
+    </div>
+    <div class="card" id="smCard" style="display:none">
+      <div class="stats" id="smTotals"></div>
+      <div style="max-height:560px;overflow:auto"><table id="smTable"></table></div>
+    </div>
+  </section>
+
+  <!-- ===================== DATA ===================== -->
+  <section class="tab" id="t-data">
+    <div class="card">
+      <h2>Data tests (create, find, delete)</h2>
+      <p class="hint">Fills each add form with the sheet's data options, saves, finds the record in its list and deletes it. Every record goes to the <b>test employee only</b> and its description starts with <code>QA-AUTO</code>.</p>
+      <div id="dataBanner"></div>
+      <div style="margin-bottom:12px"><div class="small muted" style="margin-bottom:6px">Page groups</div><div class="chips" id="groupChips"></div></div>
+      <div class="row">
+        <label class="f">Write to<select id="dpTarget"><option value="vercel">Vercel (dev)</option><option value="dotnet">.NET (main) - locked</option></select></label>
+        <label class="f">One page only (optional)<input type="text" id="dpPage" placeholder="fuel, loan/sss, rice-allowance"></label>
+        <label class="f">Max rows<input type="number" id="dpLimit" min="0" placeholder="all" style="width:90px"></label>
+        <label class="chip"><input type="checkbox" id="dpKeep"> Keep records (don't delete)</label>
+        <label class="chip"><input type="checkbox" id="dpPush"> Write results to sheet</label>
+        <label class="chip"><input type="checkbox" id="dpHeaded"> Show browser</label>
+      </div>
+      <details class="cmdbox"><summary>Show the command (to run it from a terminal)</summary><div class="cmd" id="dpCmd"></div></details>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="dpDry">Preview plan</button>
+        <button class="btn primary" id="dpGo">Create test data...</button>
+        <button class="btn" id="dpClean">Clean up leftovers...</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ENV ===================== -->
+  <section class="tab" id="t-env">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div><h2>Settings</h2><p class="hint" style="margin:0">Saved to <code>.env</code> in the tool's folder. It is git-ignored: share values privately, never in the repo.</p></div>
+        <div class="seg" id="envMode"><button data-v="form" class="on">Form</button><button data-v="raw">Copy / paste</button></div>
+      </div>
+    </div>
+    <div class="card" id="envForm"></div>
+    <div class="card" id="envRaw" style="display:none">
+      <p class="hint">Paste a whole <code>.env</code> from a teammate, or copy yours to share privately. Unknown keys are kept.</p>
+      <textarea id="envText" rows="24" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="envCopy">Copy</button>
+        <button class="btn primary" id="envSaveRaw">Save pasted text</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== HOW TO ===================== -->
+  <section class="tab howto" id="t-howto">
+    <div class="card">
+      <h2>How to use</h2>
+      <h3>1. First time</h3>
+      <ol>
+        <li>Open <b>Settings</b>. Ask the QA lead for the values (or paste their <code>.env</code> in <b>Copy / paste</b>) and click <b>Save</b>.</li>
+        <li>The sheet needs <code>QA Bot</code> (or your Checker name) in its <b>Team</b> tab.</li>
+        <li>Click <b>Preview</b> on the Run tab: it lists how many checks each role has. Roles without an account are skipped.</li>
+      </ol>
+      <h3>2. Role access tests (read-only)</h3>
+      <ol>
+        <li>Run tab: pick roles and environment. Leave <b>Write results to sheet</b> off for the first try.</li>
+        <li>Click <b>Run tests</b>. The log shows each check; failures get a screenshot in <code>results/</code>.</li>
+        <li>Happy with it? Run again with <b>Write results to sheet</b> on. Results go to the Check Log as you go.</li>
+        <li>A Windows notification pops up when a run finishes, so you can work on something else.</li>
+      </ol>
+      <h3>3. Retest</h3>
+      <ul>
+        <li><b>Retest</b> tab: <b>Load latest results</b>, choose Failed / Passed / Blocked, the environment and kind, then <b>Retest these</b>.</li>
+        <li>Use <b>Failed</b> after a bug fix. Use <b>Passed</b> before a release to make sure nothing broke.</li>
+      </ul>
+      <h3>4. Results summary</h3>
+      <ul><li>Shows pass / fail / blocked / not started per sheet and module. Click a row to list its failed tests.</li></ul>
+      <h3>5. Data tests (creates and deletes records)</h3>
+      <ol>
+        <li>Set <b>Test employee ID</b> in Settings. Every record goes to that employee only.</li>
+        <li>Pick page groups. <b>Risky</b> groups (rates, gov tables, payments, users, settings...) can affect everyone; they stay off unless <code>ALLOW_RISKY_PAGES=true</code>.</li>
+        <li><b>Preview plan</b> shows exactly which pages and how many records. <b>Create test data...</b> asks you to confirm first.</li>
+        <li>Records are deleted at the end of each check. If a run was interrupted, use <b>Clean up leftovers</b>.</li>
+        <li><b>.NET is locked.</b> It only unlocks with <code>ALLOW_DATA_ON_DOTNET=true</code>, and every run then asks you to type <code>DOTNET</code>.</li>
+      </ol>
+      <h3>Statuses</h3>
+      <ul>
+        <li><b>Pass</b> - matched the sheet's expected result. For bypass / remnant rows, Pass means the attempt was blocked.</li>
+        <li><b>Fail</b> - check the note and screenshot: an app bug, or the runner misread the page (tell the QA lead).</li>
+        <li><b>PARTIAL</b> in a data-test note - saved, listed and deleted, but payroll cutoff / payslip effects are not checked yet.</li>
+      </ul>
+      <h3>Command line</h3>
+      <p>Everything here is also a command; each tab shows the one it runs. <code>npm run qa -- --help</code> style options are documented at the top of <code>src/run.js</code> and <code>src/run-dp.js</code>.</p>
+    </div>
+  </section>
+
+  <!-- ===================== LOG ===================== -->
+  <div class="card" id="logCard" style="display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div><h2 id="logTitle" style="margin:0">Run</h2><div class="small muted" id="logMeta"></div></div>
+      <div class="row"><button class="btn" id="logStop">Stop</button><button class="btn" id="logClose">Hide</button></div>
+    </div>
+    <div class="stats" id="logStats"></div>
+    <div class="log" id="log"></div>
+  </div>
+</main>
+
+<!-- confirm modal -->
+<div class="modal" id="modal"><div class="box">
+  <h3 id="mTitle" style="margin-top:0">Confirm</h3>
+  <div id="mBody"></div>
+  <div id="mType" style="display:none;margin-top:12px"><label class="f">Type <b>DOTNET</b> to continue<input type="text" id="mTyped" autocomplete="off"></label></div>
+  <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn" id="mNo">Cancel</button><button class="btn primary" id="mYes">Continue</button></div>
+</div></div>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const MODULES = ['Login','Dashboard','Employees','Attendance','Payroll','Payroll Addition','Payroll Deduction','Deduction Monitor','Benefits',
+  'Leave Monitor','Users','Approving Officer','Approval Requests - Payroll','Approval Requests - Leave','Reports','Activity Log','Profile','Remnant Pages','Bypass / Security'];
+const ROLES = ['newqrphoadmin','payroll_officer','payroll_staff','payroll_approving_officer','payroll_mgmt','leave_immediate_head','leave_campus_admin','employee','Invalid Roles','No Roles'];
+let ENV = {}, SCHEMA = [], STATUS = null, COVERAGE = null, current = null;
+const api = (p, o = {}) => fetch(p, { ...o, headers: { 'Content-Type': 'application/json' } }).then(async r => { const t = await r.text(); try { const j = JSON.parse(t); if (!r.ok) throw new Error(j.error || r.status); return j; } catch (e) { if (r.ok) return t; throw e; } });
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const q = a => (/\s/.test(a) ? `"${a}"` : a);
+const segVal = id => $(`#${id} button.on`).dataset.v;
+$$('.seg').forEach(seg => seg.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') return; seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === e.target)); seg.dispatchEvent(new Event('change')); }));
+
+// ---------- tabs
+$('#tabs').addEventListener('click', e => { const t = e.target.dataset.t; if (!t) return;
+  $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); $$('.tab').forEach(s => s.classList.toggle('on', s.id === 't-' + t));
+  if (t === 'data' && !COVERAGE) loadCoverage(); });
+
+// ---------- env
+const hasAcc = r => !!(ENV['ACCOUNT_' + r.toUpperCase().replace(/[^A-Z0-9]+/g, '_')] || '').includes(':');
+async function loadEnv() {
+  const r = await api('/api/env'); ENV = r.values; SCHEMA = r.schema;
+  const missing = ['SHEET_WEBAPP_URL','SHEET_TOKEN','APP_URL_VERCEL'].filter(k => !ENV[k]);
+  $('#setupBanner').innerHTML = missing.length ? `<div class="banner warn">Setup needed: ${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} empty. Open <b>Settings</b>.</div>` : '';
+  if (ENV.SHEET_URL) { $('#sheetLink').href = ENV.SHEET_URL; $('#sheetLink').style.display = ''; }
+  renderEnvForm(); $('#envText').value = await fetch('/api/env/format').then(r => r.text());
+  renderRoles(); renderDataLock(); applyTheme(); updateRunCmd(); updateDpCmd();
+}
+function renderEnvForm() {
+  let html = '', group = '';
+  for (const f of SCHEMA) {
+    if (f.group !== group) { if (group) html += '</div>'; group = f.group; html += `<h2 style="margin:${html ? 18 : 0}px 0 10px">${esc(group)}</h2><div class="envgrid">`; }
+    const v = ENV[f.key] ?? '';
+    html += `<label for="e_${f.key}"><b>${esc(f.label)}</b><br><span class="small muted">${f.key}</span></label>
+      <div class="secret-wrap"><input type="${f.secret ? 'password' : 'text'}" id="e_${f.key}" data-key="${f.key}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" autocomplete="off">
+      ${f.secret ? `<button class="btn" type="button" data-show="e_${f.key}">Show</button>` : ''}</div><div class="help">${esc(f.help || '')}</div>`;
+  }
+  const extra = Object.keys(ENV).filter(k => !SCHEMA.some(f => f.key === k));
+  html += '</div>';
+  if (extra.length) html += `<p class="small muted" style="margin-top:14px">Also in your .env (kept as-is): ${extra.map(esc).join(', ')}</p>`;
+  html += `<h2 style="margin:18px 0 10px">Add a variable</h2><div class="row"><input type="text" id="newKey" placeholder="NAME_IN_CAPS"><input type="text" id="newVal" placeholder="value" style="min-width:320px"><button class="btn" id="addVar" type="button">Add</button></div>
+    <div class="row" style="margin-top:18px"><button class="btn primary" id="envSave" type="button">Save settings</button><span class="small muted" id="envMsg"></span></div>`;
+  $('#envForm').innerHTML = html;
+  $$('[data-show]').forEach(b => b.onclick = () => { const i = document.getElementById(b.dataset.show); i.type = i.type === 'password' ? 'text' : 'password'; b.textContent = i.type === 'password' ? 'Show' : 'Hide'; });
+  $('#addVar').onclick = () => { const k = $('#newKey').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_'); if (!k) return; ENV[k] = $('#newVal').value; renderEnvForm(); $('#envMsg').textContent = `Added ${k}. Click Save settings to keep it.`; };
+  $('#envSave').onclick = async () => {
+    const values = { ...ENV }; $$('#envForm input[data-key]').forEach(i => values[i.dataset.key] = i.value.trim());
+    await api('/api/env', { method: 'POST', body: JSON.stringify({ values }) }); $('#envMsg').textContent = 'Saved.'; await loadEnv();
+  };
+}
+$('#envMode').addEventListener('change', () => { const raw = segVal('envMode') === 'raw'; $('#envForm').style.display = raw ? 'none' : ''; $('#envRaw').style.display = raw ? '' : 'none'; });
+$('#envCopy').onclick = () => { navigator.clipboard.writeText($('#envText').value); $('#envCopy').textContent = 'Copied'; setTimeout(() => $('#envCopy').textContent = 'Copy', 1500); };
+$('#envSaveRaw').onclick = async () => { await api('/api/env', { method: 'POST', body: JSON.stringify({ raw: $('#envText').value }) }); await loadEnv(); alert('Saved.'); };
+
+// ---------- run tab
+function renderRoles() {
+  $('#roleChips').innerHTML = ROLES.map(r => { const ok = hasAcc(r) || /Roles$/.test(r);
+    return `<label class="chip ${ok ? '' : 'off'}"><input type="checkbox" value="${r}" ${ok && !/Roles$/.test(r) ? 'checked' : ''} ${ok ? '' : 'disabled'}>${esc(r)}</label>`; }).join('');
+  $('#moduleChips').innerHTML = MODULES.map(m => `<label class="chip"><input type="checkbox" value="${esc(m)}" checked>${esc(m)}</label>`).join('');
+  $$('#roleChips input, #moduleChips input, #t-run select, #t-run input').forEach(i => i.oninput = updateRunCmd);
+}
+document.addEventListener('click', e => {
+  const all = e.target.dataset?.all, none = e.target.dataset?.none;
+  if (!all && !none) return;
+  $$(`#${all || none} input:not(:disabled)`).forEach(i => (i.checked = !!all));
+  updateRunCmd();
+});
+// Evil QA Runner: shown whenever .env unlocks writing beyond the test employee on Vercel.
+function applyTheme() {
+  const dotnet = /^true$/i.test(ENV.ALLOW_DATA_ON_DOTNET || ''), risky = /^true$/i.test(ENV.ALLOW_RISKY_PAGES || '');
+  const evil = dotnet || risky;
+  const wasEvil = document.body.classList.contains('evil');
+  document.body.classList.toggle('evil', evil);
+  if (evil && !wasEvil) {
+    const f = document.getElementById('evilFlash');
+    if (f) { f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); setTimeout(() => f.classList.remove('go'), 1150); }
+  }
+  $('#appTitle').textContent = evil ? 'Evil QA Runner' : 'QA Runner';
+  $('#appSub').textContent = evil
+    ? `Data writing unlocked: ${[dotnet && '.NET (main)', risky && 'risky pages (can affect everyone)'].filter(Boolean).join(' + ')}. Lock it again in Settings.`
+    : 'Automated checks for the QA Role Access Testing sheet';
+  $('#evilBadge').textContent = dotnet ? '.NET WRITING UNLOCKED' : 'RISKY PAGES UNLOCKED';
+  document.title = evil ? 'Evil QA Runner' : 'QA Runner';
+}
+function runArgs(dry) {
+  const roles = $$('#roleChips input:checked').map(i => i.value);
+  const a = []; if (roles.length) a.push('--roles', roles.join(','));
+  a.push('--env', $('#runEnv').value);
+  const mods = $$('#moduleChips input:checked').map(i => i.value);
+  if (mods.length && mods.length < MODULES.length) a.push('--module', mods.join(','));
+  if ($('#runOnly').value.trim()) a.push('--only', $('#runOnly').value.replace(/\s/g, ''));
+  if ($('#runShots').value !== 'fail') a.push('--shots', $('#runShots').value);
+  if ($('#runPush').checked && !dry) a.push('--push');
+  if ($('#runHeaded').checked && !dry) a.push('--headed');
+  if (dry) a.push('--dry');
+  return a;
+}
+function updateRunCmd() { $('#runCmd').textContent = 'npm run qa -- ' + runArgs(false).map(q).join(' '); }
+$('#runDry').onclick = () => startRun('access', runArgs(true), 'Preview');
+$('#runGo').onclick = () => startRun('access', runArgs(false), 'Role access tests');
+
+// ---------- data tab
+async function loadCoverage() { try { COVERAGE = await api('/api/coverage'); } catch (e) { COVERAGE = { groups: [] }; } renderGroups(); }
+function renderGroups() {
+  const risky = /^true$/i.test(ENV.ALLOW_RISKY_PAGES || '');
+  $('#groupChips').innerHTML = (COVERAGE?.groups || []).map(g => { const usable = g.automated && (!g.risky || risky);
+    return `<label class="chip ${g.risky ? 'risky' : ''} ${usable ? '' : 'off'}" title="${esc(g.pages.join('\n'))}"><input type="checkbox" value="${g.key}" ${usable && !g.risky ? 'checked' : ''} ${usable ? '' : 'disabled'}>${esc(g.label)}${g.risky ? ' &#9888;' : ''}${g.automated ? '' : ' <span class="small">(not automated yet)</span>'}</label>`; }).join('');
+  $$('#t-data input, #t-data select').forEach(i => i.oninput = updateDpCmd); updateDpCmd();
+}
+function renderDataLock() {
+  const unlocked = /^true$/i.test(ENV.ALLOW_DATA_ON_DOTNET || '');
+  const opt = $('#dpTarget option[value=dotnet]'); opt.disabled = !unlocked; opt.textContent = unlocked ? '.NET (main) - UNLOCKED, asks to type DOTNET' : '.NET (main) - locked';
+  if (!unlocked && $('#dpTarget').value === 'dotnet') $('#dpTarget').value = 'vercel';
+  $('#dataBanner').innerHTML = !ENV.QA_EMPLOYEE_EID ? '<div class="banner err">Set <b>Test employee ID</b> (QA_EMPLOYEE_EID) in Settings before running data tests.</div>'
+    : unlocked ? '<div class="banner err"><b>.NET writing is UNLOCKED</b> in Settings. Data tests on .NET may change the live system.</div>' : '';
+  if (COVERAGE) renderGroups();
+}
+function dpArgs(extra = []) {
+  const a = [], groups = $$('#groupChips input:checked').map(i => i.value);
+  if (groups.length) a.push('--groups', groups.join(','));
+  if ($('#dpTarget').value === 'dotnet') a.push('--target', 'dotnet');
+  if ($('#dpPage').value.trim()) a.push('--page', $('#dpPage').value.trim());
+  if (+$('#dpLimit').value > 0) a.push('--limit', String(+$('#dpLimit').value));
+  if ($('#dpKeep').checked) a.push('--keep');
+  if ($('#dpPush').checked) a.push('--push');
+  if ($('#dpHeaded').checked) a.push('--headed');
+  return [...a, ...extra];
+}
+function updateDpCmd() { $('#dpCmd').textContent = 'npm run qa:dp -- ' + dpArgs().map(q).join(' '); }
+$('#dpDry').onclick = () => startRun('data', dpArgs(['--dry']), 'Data test plan');
+$('#dpGo').onclick = async () => {
+  const dotnet = $('#dpTarget').value === 'dotnet';
+  const groups = $$('#groupChips input:checked').map(i => COVERAGE.groups.find(g => g.key === i.value));
+  if (!groups.length) return alert('Pick at least one page group.');
+  const risky = groups.filter(g => g.risky);
+  const body = `<p>This will <b>create</b> test records on <b>${dotnet ? '.NET (main)' : 'Vercel (dev)'}</b>${$('#dpKeep').checked ? ' and <b>keep</b> them' : ' and delete each one after its check'}.</p>
+    <ul><li>Test employee: <b>${esc(ENV.QA_EMPLOYEE_EID || '(not set)')}</b> only</li><li>Created by: <b>payroll_officer</b> account</li>
+    <li>Groups: ${groups.map(g => esc(g.label)).join(', ')}</li>${$('#dpPage').value ? `<li>Only page: ${esc($('#dpPage').value)}</li>` : ''}${+$('#dpLimit').value > 0 ? `<li>At most ${+$('#dpLimit').value} records</li>` : ''}</ul>
+    ${risky.length ? `<div class="banner warn"><b>Risky:</b> ${risky.map(g => esc(g.label)).join(', ')} can affect everyone's payroll while the record exists.</div>` : ''}
+    <p class="small muted">Tip: click <b>Preview plan</b> first to see the exact pages and row count.</p>`;
+  if (!(await confirmBox(dotnet ? 'WARNING: test data on .NET' : 'Create test data?', body, { red: dotnet || risky.length, typeDotnet: dotnet }))) return;
+  startRun('data', dpArgs(['--yes', ...(dotnet ? ['--confirm-dotnet', 'DOTNET'] : [])]), 'Data tests');
+};
+$('#dpClean').onclick = async () => {
+  const dotnet = $('#dpTarget').value === 'dotnet';
+  if (!(await confirmBox('Delete leftover test records?', `<p>Deletes every record whose description contains <code>QA-AUTO</code> on the automated list pages of <b>${dotnet ? '.NET' : 'Vercel'}</b>.</p>`, { red: dotnet, typeDotnet: dotnet }))) return;
+  startRun('data', ['--cleanup', ...(dotnet ? ['--target', 'dotnet', '--confirm-dotnet', 'DOTNET'] : [])], 'Clean up leftovers');
+};
+$('#dpTarget').oninput = updateDpCmd;
+
+function confirmBox(title, html, { red = false, typeDotnet = false } = {}) {
+  return new Promise(resolve => {
+    const m = $('#modal'); m.classList.toggle('red', !!red); $('#mTitle').textContent = title; $('#mBody').innerHTML = html;
+    $('#mType').style.display = typeDotnet ? '' : 'none'; $('#mTyped').value = '';
+    const yes = $('#mYes'); yes.className = 'btn ' + (red ? 'danger' : 'primary'); yes.disabled = typeDotnet;
+    $('#mTyped').oninput = () => { yes.disabled = $('#mTyped').value !== 'DOTNET'; };
+    m.classList.add('on');
+    const done = v => { m.classList.remove('on'); resolve(v); };
+    yes.onclick = () => done(true); $('#mNo').onclick = () => done(false);
+  });
+}
+
+// ---------- status: retest + summary
+async function getStatus(btn, info) {
+  btn.disabled = true; const t = btn.textContent; btn.textContent = 'Loading...';
+  try { STATUS = (await api('/api/status')).rows; info && (info.textContent = `${STATUS.length} test rows loaded at ${new Date().toLocaleTimeString()}`); return true; }
+  catch (e) { info ? (info.innerHTML = `<span style="color:var(--fail)">${esc(e.message)}</span>`) : alert(e.message); return false; }
+  finally { btn.disabled = false; btn.textContent = t; }
+}
+$('#loadStatus').onclick = async () => { if (await getStatus($('#loadStatus'), $('#statusInfo'))) { $('#retestCard').style.display = ''; renderRetest(); } };
+['rtWhich','rtEnv','rtKind'].forEach(id => $('#' + id).addEventListener('change', renderRetest)); $('#rtPush').oninput = renderRetest;
+let RT_IDS = [];
+function renderRetest() {
+  if (!STATUS) return;
+  const which = segVal('rtWhich'), env = segVal('rtEnv'), kind = segVal('rtKind');
+  const rows = STATUS.filter(r => (kind === 'data' ? /^DP - /.test(r.sheet) : /^TC - /.test(r.sheet)));
+  const count = v => rows.filter(r => r[env] === v).length;
+  $('#rtStats').innerHTML = `<div class="stat pass"><b>${count('Pass')}</b>Passed</div><div class="stat fail"><b>${count('Fail')}</b>Failed</div><div class="stat warn"><b>${count('Blocked')}</b>Blocked</div><div class="stat"><b>${count('Not Started')}</b>Not started</div>`;
+  RT_IDS = rows.filter(r => r[env] === which).map(r => r.id + '@' + env);
+  const flags = kind === 'data' ? ['--yes'] : [];
+  $('#rtCmd').textContent = RT_IDS.length ? `npm run ${kind === 'data' ? 'qa:dp' : 'qa'} -- --ids-file ids.txt${kind === 'access' ? ' --env ' + env : ''}${$('#rtPush').checked ? ' --push' : ''}   # ${RT_IDS.length} ${which.toLowerCase()} tests on ${env}` : `# no ${which.toLowerCase()} ${kind} tests on ${env}`;
+  $('#rtIds').textContent = RT_IDS.map(x => x.split('@')[0]).join(', ') || '-';
+  $('#rtGo').disabled = !RT_IDS.length || (kind === 'data' && env === 'dotnet');
+}
+$('#rtCopy').onclick = () => navigator.clipboard.writeText(RT_IDS.join('\n'));
+$('#rtGo').onclick = async () => {
+  const kind = segVal('rtKind'), env = segVal('rtEnv');
+  if (kind === 'data' && !(await confirmBox('Retest data tests?', `<p>Creates and deletes ${RT_IDS.length} test records on Vercel, for test employee <b>${esc(ENV.QA_EMPLOYEE_EID)}</b>.</p>`))) return;
+  const args = [RT_IDS.join('\n'), kind, ...(kind === 'access' ? ['--env', env] : ['--yes']), ...($('#rtPush').checked ? ['--push'] : [])];
+  startRun('ids', args, `Retest ${segVal('rtWhich').toLowerCase()} (${RT_IDS.length})`);
+};
+
+$('#loadSummary').onclick = async () => { if (await getStatus($('#loadSummary'))) { $('#smCard').style.display = ''; renderSummary(); } };
+['smEnv','smBy'].forEach(id => $('#' + id).addEventListener('change', renderSummary));
+function renderSummary() {
+  if (!STATUS) return;
+  const env = segVal('smEnv'), by = segVal('smBy');
+  const key = r => by === 'sheet' ? r.sheet : by === 'module' ? (r.module || '-') : `${r.sheet}  >  ${r.module || '-'}`;
+  const groups = new Map();
+  for (const r of STATUS) { const k = key(r); if (!groups.has(k)) groups.set(k, { Pass: 0, Fail: 0, Blocked: 0, ns: 0, rows: [] }); const g = groups.get(k); const s = r[env];
+    if (s === 'Pass' || s === 'Fail' || s === 'Blocked') g[s]++; else g.ns++; g.rows.push(r); }
+  const tot = { Pass: 0, Fail: 0, Blocked: 0, ns: 0 }; for (const g of groups.values()) for (const k in tot) tot[k] += g[k];
+  const all = tot.Pass + tot.Fail + tot.Blocked + tot.ns;
+  $('#smTotals').innerHTML = `<div class="stat"><b>${all}</b>Tests</div><div class="stat pass"><b>${tot.Pass}</b>Passed</div><div class="stat fail"><b>${tot.Fail}</b>Failed</div><div class="stat warn"><b>${tot.Blocked}</b>Blocked</div><div class="stat"><b>${tot.ns}</b>Not started</div>`;
+  const rows = [...groups.entries()].sort((a, b) => b[1].Fail - a[1].Fail || a[0].localeCompare(b[0]));
+  $('#smTable').innerHTML = `<tr><th>${by === 'module' ? 'Module' : by === 'sheet' ? 'Sheet' : 'Sheet > module'}</th><th>Total</th><th>Pass</th><th>Fail</th><th>Blocked</th><th>Not started</th><th>Progress</th></tr>` +
+    rows.map(([k, g], i) => { const n = g.Pass + g.Fail + g.Blocked + g.ns, pct = x => (100 * x / n).toFixed(1) + '%';
+      return `<tr data-i="${i}" style="cursor:pointer"><td>${esc(k)}</td><td>${n}</td><td>${g.Pass}</td><td>${g.Fail ? `<b style="color:var(--fail)">${g.Fail}</b>` : 0}</td><td>${g.Blocked}</td><td>${g.ns}</td>
+        <td><div class="bar"><span class="bp" style="width:${pct(g.Pass)}"></span><span class="bf" style="width:${pct(g.Fail)}"></span><span class="bb" style="width:${pct(g.Blocked)}"></span></div></td></tr>
+        <tr class="det" id="det${i}" style="display:none"><td colspan="7">${g.rows.filter(r => r[env] === 'Fail').map(r => `<div><span class="tag Fail">Fail</span> <b>${esc(r.id)}</b> ${esc(r.page)} - ${esc(r.test)}</div>`).join('') || '<span class="muted">No failed tests here.</span>'}</td></tr>`; }).join('');
+  $$('#smTable tr[data-i]').forEach(tr => tr.onclick = () => { const d = $('#det' + tr.dataset.i); d.style.display = d.style.display ? '' : 'none'; });
+}
+
+// ---------- running + live log + notification
+function startRun(kind, args, title) {
+  if (current && !current.done) return alert('A run is already going. Stop it first.');
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  api('/api/run', { method: 'POST', body: JSON.stringify({ kind, args, title }) }).then(({ id, cmd }) => {
+    current = { id, done: false, started: Date.now(), title };
+    $('#logCard').style.display = ''; $('#logTitle').textContent = title; $('#logMeta').textContent = cmd; $('#log').innerHTML = ''; $('#logStats').innerHTML = '';
+    $('#logCard').scrollIntoView({ behavior: 'smooth' });
+    let p = 0, f = 0;
+    const es = new EventSource('/api/stream/' + id);
+    es.onmessage = e => { const { line } = JSON.parse(e.data); const cls = /^\s*Pass\b/.test(line) ? 'p' : /^\s*Fail\b|FAILED|refused|error/i.test(line) ? 'f' : /SKIP|WARNING|!!/.test(line) ? 'w' : '';
+      if (cls === 'p') p++; if (cls === 'f' && /^\s*Fail\b/.test(line)) f++;
+      const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = line; const log = $('#log'); const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 30; log.appendChild(d); if (atEnd) log.scrollTop = log.scrollHeight;
+      $('#logStats').innerHTML = `<div class="stat pass"><b>${p}</b>Pass</div><div class="stat fail"><b>${f}</b>Fail</div><div class="stat"><b>${Math.round((Date.now() - current.started) / 1000)}s</b>Elapsed</div>`; };
+    es.addEventListener('done', e => { es.close(); current.done = true; const { code, summary } = JSON.parse(e.data);
+      const msg = summary && summary.pass != null ? `${summary.pass} Pass, ${summary.fail} Fail` : code === 0 ? 'Finished' : 'Stopped / error (see log)';
+      const d = document.createElement('div'); d.className = code === 0 ? 'p' : 'f'; d.textContent = `\n=== ${title}: ${msg} ===`; $('#log').appendChild(d); $('#log').scrollTop = 1e9;
+      document.title = `Done: ${msg} - QA Runner`;
+      if ('Notification' in window && Notification.permission === 'granted') new Notification('QA Runner: ' + title, { body: msg });
+      if (kind === 'access' || kind === 'ids') STATUS = null; });
+  }).catch(e => alert(e.message));
+}
+$('#logStop').onclick = () => current && api('/api/stop/' + current.id, { method: 'POST' });
+$('#logClose').onclick = () => $('#logCard').style.display = 'none';
+window.addEventListener('focus', () => { if (current?.done) applyTheme(); });
+
+loadEnv();
+</script>
+</body>
+</html>

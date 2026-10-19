@@ -1,0 +1,9 @@
+# Sample upload files must stay byte-for-byte identical
+test-files/** binary
+*.png binary
+*.jpg binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.webp binary
+*.gif binary
