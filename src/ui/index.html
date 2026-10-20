@@ -231,7 +231,7 @@
       <div style="margin-bottom:12px"><div class="small muted" style="margin-bottom:6px">Page groups</div><div class="chips" id="groupChips"></div></div>
       <div class="row">
         <label class="f">Write to<select id="dpTarget"><option value="vercel">Vercel (dev)</option><option value="dotnet">.NET (main) - locked</option></select></label>
-        <label class="f">One page only (optional)<input type="text" id="dpPage" placeholder="fuel, loan/sss, rice-allowance"></label>
+        <label class="f">Page<select id="dpPage"><option value="">All pages in the picked groups</option></select></label>
         <label class="f">Max rows<input type="number" id="dpLimit" min="0" placeholder="all" style="width:90px"></label>
         <label class="chip"><input type="checkbox" id="dpKeep"> Keep records (don't delete)</label>
         <label class="chip"><input type="checkbox" id="dpPush"> Write results to sheet</label>
@@ -463,7 +463,25 @@ function renderGroups() {
   const risky = /^true$/i.test(ENV.ALLOW_RISKY_PAGES || '');
   $('#groupChips').innerHTML = (COVERAGE?.groups || []).map(g => { const usable = g.automated && (!g.risky || risky);
     return `<label class="chip ${g.risky ? 'risky' : ''} ${usable ? '' : 'off'}" title="${esc(g.pages.join('\n'))}"><input type="checkbox" value="${g.key}" ${usable && !g.risky ? 'checked' : ''} ${usable ? '' : 'disabled'}>${esc(g.label)}${g.risky ? ' &#9888;' : ''}${g.automated ? '' : ' <span class="small">(not automated yet)</span>'}</label>`; }).join('');
-  $$('#t-data input, #t-data select').forEach(i => i.oninput = updateDpCmd); updateDpCmd();
+  $$('#t-data input, #t-data select').forEach(i => i.oninput = updateDpCmd);
+  $$('#groupChips input').forEach(i => i.onchange = () => { renderPages(); updateDpCmd(); });
+  renderPages(); updateDpCmd();
+}
+// Page picker: one option per list page of the checked groups, named relative to the group's folder.
+const ACRONYM = /^(sss|hdmf|phic|cola|klcc|dbp|lbp|mpl)$/i;
+const WORD = { philhealth: 'PhilHealth', paygroup: 'Pay Group', employment: 'Employment Type' };
+const pageName = (p, base) => (p.slice(base.length).replace(/^\/+/, '') || p.split('/').pop()).split('/')
+  .map(part => part.split('-').map(w => WORD[w] || (ACRONYM.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' ')).join(' / ');
+function renderPages() {
+  const sel = $('#dpPage'), keep = sel.value;
+  const groups = $$('#groupChips input:checked').map(i => COVERAGE.groups.find(g => g.key === i.value)).filter(Boolean);
+  sel.innerHTML = '<option value="">All pages in the picked groups</option>' + groups.map(g => {
+    const dirs = g.pages.map(p => p.split('/').slice(0, -1));
+    let n = 0; while (dirs.every(d => d[n] !== undefined && d[n] === dirs[0][n])) n++;
+    const base = dirs[0].slice(0, n).join('/');
+    return `<optgroup label="${esc(g.label)}">${g.pages.map(p => `<option value="${esc(p.replace(/^\/+/, ''))}" title="${esc(p)}">${esc(pageName(p, base))}</option>`).join('')}</optgroup>`;
+  }).join('');
+  sel.value = [...sel.options].some(o => o.value === keep) ? keep : '';
 }
 function renderDataLock() {
   const unlocked = /^true$/i.test(ENV.ALLOW_DATA_ON_DOTNET || '');
@@ -477,7 +495,7 @@ function dpArgs(extra = []) {
   const a = [], groups = $$('#groupChips input:checked').map(i => i.value);
   if (groups.length) a.push('--groups', groups.join(','));
   if ($('#dpTarget').value === 'dotnet') a.push('--target', 'dotnet');
-  if ($('#dpPage').value.trim()) a.push('--page', $('#dpPage').value.trim());
+  if ($('#dpPage').value) a.push('--page', $('#dpPage').value);
   if (+$('#dpLimit').value > 0) a.push('--limit', String(+$('#dpLimit').value));
   if ($('#dpKeep').checked) a.push('--keep');
   if ($('#dpPush').checked) a.push('--push');
@@ -493,7 +511,7 @@ $('#dpGo').onclick = async () => {
   const risky = groups.filter(g => g.risky);
   const body = `<p>This will <b>create</b> test records on <b>${dotnet ? '.NET (main)' : 'Vercel (dev)'}</b>${$('#dpKeep').checked ? ' and <b>keep</b> them' : ' and delete each one after its check'}.</p>
     <ul><li>Test employee: <b>${esc(ENV.QA_EMPLOYEE_EID || '(not set)')}</b> only</li><li>Created by: <b>payroll_officer</b> account</li>
-    <li>Groups: ${groups.map(g => esc(g.label)).join(', ')}</li>${$('#dpPage').value ? `<li>Only page: ${esc($('#dpPage').value)}</li>` : ''}${+$('#dpLimit').value > 0 ? `<li>At most ${+$('#dpLimit').value} records</li>` : ''}</ul>
+    <li>Groups: ${groups.map(g => esc(g.label)).join(', ')}</li>${$('#dpPage').value ? `<li>Only page: ${esc($('#dpPage').selectedOptions[0].textContent)} (/${esc($('#dpPage').value)})</li>` : ''}${+$('#dpLimit').value > 0 ? `<li>At most ${+$('#dpLimit').value} records</li>` : ''}</ul>
     ${risky.length ? `<div class="banner warn"><b>Risky:</b> ${risky.map(g => esc(g.label)).join(', ')} can affect everyone's payroll while the record exists.</div>` : ''}
     <p class="small muted">Tip: click <b>Preview plan</b> first to see the exact pages and row count.</p>`;
   if (!(await confirmBox(dotnet ? 'WARNING: test data on .NET' : 'Create test data?', body, { red: dotnet || risky.length, typeDotnet: dotnet }))) return;

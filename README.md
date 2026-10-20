@@ -35,7 +35,7 @@ The UI only listens on this computer (`127.0.0.1`); nobody else on the network c
 | Run tests | Pick roles, modules and environment, then run the role access tests with a live log |
 | Retest | Load the sheet's latest results and re-run all **failed**, **passed** or **blocked** tests |
 | Results summary | Pass / fail / blocked / not started per sheet or module; click a row for its failures |
-| Data tests | Create-and-delete tests per page group, with a confirmation before anything is written |
+| Data tests | Create-and-delete tests per page group (or one page picked from the list), with a confirmation before anything is written |
 | Settings (.env) | Edit settings as a form, add a variable, or copy / paste the whole file |
 | How to use | Step-by-step guide |
 

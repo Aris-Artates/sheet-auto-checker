@@ -2,7 +2,7 @@
 /**
  * npm run qa:dp -- [options]      DP data tests: CREATE and DELETE real records.
  *   --groups deductions,additions,benefits   page groups (default: every automated, non-risky group)
- *   --page fuel                    only list pages whose path ends with this
+ *   --page payroll/deduction/fuel  one list page (full path from the UI picker; a short ending like fuel also works)
  *   --only DPPD-0001,DPPD-0002     only these TC IDs     --ids-file ids.txt   IDs from a file
  *   --limit 5                      stop after N rows
  *   --keep                         do not delete the records afterwards (for inspection)
@@ -21,7 +21,7 @@ import { chromium } from 'playwright';
 import { config, accountFor, ROOT } from './config.js';
 import { loadFromWebapp, loadFromXlsx, pushResults, writeCsv } from './sheet.js';
 import { login, pathOf, waitForSplash } from './app.js';
-import { GROUPS, groupOf, dpAutomatable, runDpRow, cleanupLeftovers, assertWritable } from './dp.js';
+import { GROUPS, groupOf, listPathOf, dpAutomatable, runDpRow, cleanupLeftovers, assertWritable } from './dp.js';
 import { notify, summaryLine } from './notify.js';
 
 const args = process.argv.slice(2);
@@ -84,7 +84,8 @@ const all = typeof xlsx === 'string' ? await loadFromXlsx(xlsx) : await loadFrom
 let rows = all.filter(r => r.sheet.startsWith('DP - ') && dpAutomatable(r))
   .filter(r => chosen.includes(groupOf(r)))
   .filter(r => !only || only.includes(r.id))
-  .filter(r => !pageFilter || pathOf(r.vercel).replace(/\/add$/, '').endsWith('/' + pageFilter));
+  // Match on the list page (so /payroll/rates/add/salary counts as /payroll/rates); a full path never hits loan/sss for sss.
+  .filter(r => { if (!pageFilter) return true; const lp = listPathOf(r.vercel || 'https://x/'); return lp === '/' + pageFilter || lp.endsWith('/' + pageFilter); });
 rows = rows.slice(0, Number(opt('limit', 0)) || Infinity);
 const pages = [...new Set(rows.map(r => r.page + ' (' + pathOf(r.vercel).replace(/\/add$/, '') + ')'))];
 
@@ -92,6 +93,7 @@ console.log(`\nDP test data plan on ${target === 'dotnet' ? '.NET' : 'Vercel'}: 
 console.log(`  Groups: ${chosen.map(g => g.label).join(', ') || '-'}`);
 console.log(`  Test employee: ${config.data.employeeEid || '(not set)'}   Logged in as: ${account.username}`);
 console.log(`  Pages (${pages.length}): ${pages.slice(0, 12).join(', ')}${pages.length > 12 ? ', ...' : ''}`);
+if (pageFilter && !rows.length) console.log(`  No automated rows on page "${pageFilter}" in the picked groups.`);
 if (opt('dry') || !rows.length) process.exit(0);
 
 if (!opt('yes')) {
