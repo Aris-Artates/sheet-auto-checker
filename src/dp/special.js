@@ -60,9 +60,10 @@ async function boomTruck(ctx, row, { url, runId, keep, done }) {
   const foaRaw = String(row.raw['Frequency (FOA)'] || '');
   const foa = /^(One Time|Regular)/.test(foaRaw) ? foaRaw : 'One Time - 15th';
   done.push(await setFrequency(page, foa));
-  // Work dates inside the chosen cutoff: the 3rd for a 15th cutoff, the 20th for an end-of-month one.
-  const cutoff = nextCutoff(/End/i.test(foa) ? 'end' : '15');
-  const day = new Date(cutoff.getFullYear(), cutoff.getMonth(), cutoff.getDate() <= 15 ? 3 : 20);
+  // Work dates must sit in the half-month the form allows: the One Time date's half, or for Regular the half
+  // holding the effectivity start (today). The 3rd for a 1st-15th half, the 20th for a 16th-end one.
+  const anchor = /^One Time/.test(foa) ? nextCutoff(/End/i.test(foa) ? 'end' : '15') : new Date();
+  const day = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() <= 15 ? 3 : 20);
   const next = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
   const startPath = pathOf(page.url());
   if (/^Date outside pay period/.test(s)) {

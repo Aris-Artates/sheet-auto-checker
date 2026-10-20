@@ -21,12 +21,22 @@ export function nextCutoff(kind) {
 
 export async function pickDate(page, trigger, date) {
   await trigger.click();
-  const cell = page.locator(`[data-slot="calendar"] td[data-day="${ymd(date)}"] button`);
-  for (let i = 0; i < 4 && !(await cell.isVisible().catch(() => false)); i++) {
-    await page.getByRole('button', { name: /next month/i }).last().click().catch(() => {});
-    await sleep(250);
+  // Wait for the popup first: checking straight after the click saw no calendar yet and paged months ahead blindly.
+  const cal = page.locator('[data-slot="calendar"]').last();
+  await cal.waitFor({ timeout: 5000 });
+  const want = ymd(date), cell = cal.locator(`td[data-day="${want}"]`);
+  for (let i = 0; i < 24 && !(await cell.isVisible().catch(() => false)); i++) {
+    // Page toward the target month from the month shown (calendars open on the selected date, today, or the period).
+    const days = await cal.locator('td[data-day]').evaluateAll(tds => tds.map(t => t.dataset.day)).catch(() => []);
+    const shown = (days[Math.floor(days.length / 2)] || '').slice(0, 7);
+    const name = !shown || shown < want.slice(0, 7) ? /next month/i : /previous month/i;
+    const nav = cal.getByRole('button', { name });
+    await ((await nav.count()) ? nav.first() : page.getByRole('button', { name }).last()).click().catch(() => {});
+    await cell.waitFor({ state: 'visible', timeout: 800 }).catch(() => {});
   }
-  await cell.click({ timeout: 5000 });
+  if (!(await cell.isVisible().catch(() => false))) throw new Error(`Date ${want} not found in the calendar`);
+  if ((await cell.getAttribute('data-disabled')) === 'true') { await page.keyboard.press('Escape'); throw new Error(`Date ${want} is greyed out in the calendar`); }
+  await cell.locator('button').click({ timeout: 5000 });
 }
 
 /** Check the radio in group `name` whose value is `value`, if that group exists and it is enabled. */
@@ -115,12 +125,17 @@ export const DELETE_BTN = '[data-action^="delete"], [data-action^="d-"], i.fa-tr
 
 /** The "by record" view of a list page: deductions call it by-trans, additions/benefits by-eligibility. */
 export async function findInList(page, listUrl, marker) {
-  for (const view of ['by-trans', 'by-eligibility']) {
+  // Try the page's own view first; the other one only costs a wasted wait.
+  for (const view of listUrl.includes('/deduction/') ? ['by-trans', 'by-eligibility'] : ['by-eligibility', 'by-trans']) {
     await page.goto(`${listUrl}?filter=${view}`, { waitUntil: 'load' });
     await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+    // Lists cut descriptions to 20 characters ("QA-AUTO 10200929 DPP...") before searching them, so search that much
+    // and pick the exact row by its full text (shown in the cell, or kept in data-full-text).
     const search = page.locator('input[placeholder="Search"]').first();
-    if (await search.isVisible().catch(() => false)) await search.fill(marker);
-    const row = page.locator('table tbody tr').filter({ hasText: marker }).filter({ has: page.locator(DELETE_BTN) }).first();
+    if (await search.isVisible().catch(() => false)) await search.fill(marker.slice(0, 20).trim());
+    const rows = page.locator('table tbody tr');
+    const row = rows.filter({ hasText: marker }).or(rows.filter({ has: page.locator(`[data-full-text="${marker}"]`) }))
+      .filter({ has: page.locator(DELETE_BTN) }).first();
     if (await row.waitFor({ timeout: 12000 }).then(() => true).catch(() => false)) return row;
   }
   throw new Error('not found');

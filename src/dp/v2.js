@@ -7,8 +7,8 @@ import { setRadio, pickTestEmployee, setFrequency } from './common.js';
 export async function fillV2(page, row, runId, done) {
   const raw = row.raw;
   const marker = `QA-AUTO ${runId} ${row.id}`;
-  // Name: a free-text name field (Name/Type of ...) that is not read-only.
-  const nameInput = page.locator('div:has(> label:text-matches("^Name/Type of")) input:not([readonly])');
+  // Name: the free-text name field ("Name/Type of ..."; Refunds call it "Refund Title") that is not read-only.
+  const nameInput = page.locator('div:has(> label:text-matches("^(Name/Type of|Refund Title)")) input:not([readonly])');
   if (await nameInput.count()) {
     const want = String(raw.Name || '');
     const suffix = /\(blank\)|locked/i.test(want) ? '' : (want.includes(' - ') ? want.split(' - ').pop() : 'QA');
