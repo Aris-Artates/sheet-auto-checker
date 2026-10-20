@@ -110,6 +110,9 @@ export async function saveOutcome(page) {
   return { ok: false, note: 'No success or error message after ' + config.pageTimeoutMs / 1000 + 's' };
 }
 
+/** A row's delete control. Tables name it "delete", "delete-cA"... or short "d-paOA", "d-bt", "d-pdSSS"...; some only have the trash icon. */
+export const DELETE_BTN = '[data-action^="delete"], [data-action^="d-"], i.fa-trash';
+
 /** The "by record" view of a list page: deductions call it by-trans, additions/benefits by-eligibility. */
 export async function findInList(page, listUrl, marker) {
   for (const view of ['by-trans', 'by-eligibility']) {
@@ -117,14 +120,14 @@ export async function findInList(page, listUrl, marker) {
     await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
     const search = page.locator('input[placeholder="Search"]').first();
     if (await search.isVisible().catch(() => false)) await search.fill(marker);
-    const row = page.locator('table tbody tr').filter({ hasText: marker }).filter({ has: page.locator('[data-action^="delete"]') }).first();
+    const row = page.locator('table tbody tr').filter({ hasText: marker }).filter({ has: page.locator(DELETE_BTN) }).first();
     if (await row.waitFor({ timeout: 12000 }).then(() => true).catch(() => false)) return row;
   }
   throw new Error('not found');
 }
 
 export async function deleteRow(page, row) {
-  await row.locator('[data-action^="delete"]').first().click();
+  await row.locator(DELETE_BTN).first().click();
   await page.getByRole('button', { name: 'Yes, Delete' }).click({ timeout: 10000 });
   await page.locator('[data-sonner-toast]').filter({ hasText: /deleted/i }).first().waitFor({ timeout: config.pageTimeoutMs });
 }
@@ -174,7 +177,7 @@ export async function rowWithText(page, text, { search = true, timeout = 15000 }
 }
 
 /** Click a row's delete control, confirm the dialog, and wait for a "deleted/removed" toast. */
-export async function deleteViaRow(page, row, { action = '[data-action^="delete"], [title*="Delete" i], [aria-label*="Delete" i]', confirm = /^(Yes, Delete|Delete|Yes|Confirm|Remove)$/ } = {}) {
+export async function deleteViaRow(page, row, { action = DELETE_BTN + ', [title*="Delete" i], [aria-label*="Delete" i]', confirm = /^(Yes, Delete|Delete|Yes|Confirm|Remove)$/ } = {}) {
   await row.locator(action).first().click();
   await page.getByRole('button', { name: confirm }).last().click({ timeout: 10000 });
   return toastOutcome(page, /deleted|removed|success/i);
