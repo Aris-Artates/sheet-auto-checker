@@ -56,18 +56,28 @@ Every tab also shows the equivalent terminal command (`npm run qa -- ...`, `npm 
 
 ## Status of the data tests
 
-| Page group | Automated |
-|---|---|
-| Payroll Deductions (17 pages) | Yes, not yet verified on a live run |
-| Payroll Additions (3 pages) | Yes, not yet verified on a live run |
-| Benefits (6 pages) | Yes, not yet verified on a live run |
-| Boom Truck, Longevity, SSS / PhilHealth / HDMF contributions | Not yet |
-| Employees + master data | Not yet |
-| Rates + Gov tables (risky) | Not yet |
-| Payments, Leave, Users, Officers, Settings (risky) | Not yet |
+All groups are automated; none has been verified on a live run yet.
 
-Data-test results currently check save, list and delete; they are marked `PARTIAL` until the
-payroll cutoff / payslip checks are added.
+| Page group | Automated | Notes |
+|---|---|---|
+| Payroll Deductions (17 pages) | "Add" rows | test employee only |
+| Payroll Additions (3 pages) | "Add" rows | test employee only |
+| Benefits (6 pages) | "Add" rows | test employee only |
+| Boom Truck, Longevity, SSS / PhilHealth / HDMF contributions | Yes | contribution "Compensation" boxes are not wired to the save (reported as a known bug) |
+| Employees + master data | Yes (gov-ID / email / social-link rows stay manual) | creates and deletes throw-away `AUTO-DP...` employees |
+| Rates + Gov tables (risky) | Yes | gov tables dated Dec 2030 so they are never active today; salary-rate conflicts are cancelled, never proceeded |
+| Payments, Leave, Users, Officers (risky) | Yes, partly | see below |
+
+**Left manual on purpose** (the tool cannot undo them):
+- Leave monetization, tardiness charged, undertime/absence charged: the app has no delete for these.
+- Payroll Settings: saving rewrites everyone's settings and there is no undo.
+- Payroll and leave approval requests: they act on real payroll cutoffs / wait on the leave-decision endpoint.
+
+**Known app bugs the tests report as Fail:** Approving Officers "Save Changes" and Bank Payment
+"Generate" send nothing to the server; the Payment Processor "Employee Accounts" form can't be opened.
+
+Data-test results check save, list and delete; they are marked `PARTIAL` until the payroll
+cutoff / payslip checks are added.
 
 ## Connecting the sheet (one time, by the sheet owner)
 

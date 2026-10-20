@@ -31,8 +31,8 @@ const ask = async q => { const rl = readline.createInterface({ input: process.st
 
 // ---- coverage report (no data, no browser)
 if (opt('coverage')) {
-  for (const g of GROUPS) console.log(`${g.filler ? 'AUTOMATED ' : 'NOT YET   '} ${g.risky ? 'RISKY ' : '      '} ${g.label} (${g.pages.length} pages)`);
-  console.log(summaryLine({ kind: 'coverage', groups: GROUPS.map(g => ({ key: g.key, label: g.label, risky: g.risky, automated: !!g.filler, pages: g.pages })) }));
+  for (const g of GROUPS) console.log(`${g.automated ? 'AUTOMATED ' : 'NOT YET   '} ${g.risky ? 'RISKY ' : '      '} ${g.label} (${g.pages.length} pages)`);
+  console.log(summaryLine({ kind: 'coverage', groups: GROUPS.map(g => ({ key: g.key, label: g.label, risky: g.risky, automated: !!g.automated, pages: g.pages })) }));
   process.exit(0);
 }
 
@@ -71,7 +71,7 @@ if (opt('cleanup')) {
 
 // ---- which rows
 const wantGroups = typeof opt('groups') === 'string' ? opt('groups').split(',').map(s => s.trim()) : null;
-const chosen = GROUPS.filter(g => g.filler && (wantGroups ? wantGroups.includes(g.key) : !g.risky));
+const chosen = GROUPS.filter(g => g.automated && (wantGroups ? wantGroups.includes(g.key) : !g.risky));
 const risky = chosen.filter(g => g.risky);
 if (risky.length && !config.data.risky) die(`These groups can affect EVERYONE's payroll: ${risky.map(g => g.label).join(', ')}.\nSet ALLOW_RISKY_PAGES=true in .env to allow them.`);
 
