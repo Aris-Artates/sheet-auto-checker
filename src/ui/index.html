@@ -520,7 +520,8 @@ $('#dpGo').onclick = async () => {
 $('#dpClean').onclick = async () => {
   const dotnet = $('#dpTarget').value === 'dotnet';
   if (!(await confirmBox('Delete leftover test records?', `<p>Deletes every record whose description contains <code>QA-AUTO</code> on the automated list pages of <b>${dotnet ? '.NET' : 'Vercel'}</b>.</p>`, { red: dotnet, typeDotnet: dotnet }))) return;
-  startRun('data', ['--cleanup', ...(dotnet ? ['--target', 'dotnet', '--confirm-dotnet', 'DOTNET'] : [])], 'Clean up leftovers');
+  const cg = $$('#groupChips input:checked').map(i => i.value);
+  startRun('data', ['--cleanup', ...(cg.length ? ['--groups', cg.join(',')] : []), ...(dotnet ? ['--target', 'dotnet', '--confirm-dotnet', 'DOTNET'] : [])], 'Clean up leftovers');
 };
 $('#dpTarget').oninput = updateDpCmd;
 
@@ -602,7 +603,7 @@ function startRun(kind, args, title) {
       const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = line; const log = $('#log'); const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 30; log.appendChild(d); if (atEnd) log.scrollTop = log.scrollHeight;
       $('#logStats').innerHTML = `<div class="stat pass"><b>${p}</b>Pass</div><div class="stat fail"><b>${f}</b>Fail</div><div class="stat"><b>${Math.round((Date.now() - current.started) / 1000)}s</b>Elapsed</div>`; };
     es.addEventListener('done', e => { es.close(); current.done = true; const { code, summary } = JSON.parse(e.data);
-      const msg = summary && summary.pass != null ? `${summary.pass} Pass, ${summary.fail} Fail` : code === 0 ? 'Finished' : 'Stopped / error (see log)';
+      const msg = summary && summary.pass != null ? `${summary.pass} Pass, ${summary.fail} Fail${summary.blocked ? `, ${summary.blocked} Blocked` : ''}` : code === 0 ? 'Finished' : 'Stopped / error (see log)';
       const d = document.createElement('div'); d.className = code === 0 ? 'p' : 'f'; d.textContent = `\n=== ${title}: ${msg} ===`; $('#log').appendChild(d); $('#log').scrollTop = 1e9;
       document.title = `Done: ${msg} - QA Runner`;
       if ('Notification' in window && Notification.permission === 'granted') new Notification('QA Runner: ' + title, { body: msg });

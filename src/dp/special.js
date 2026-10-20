@@ -3,11 +3,13 @@
  * SSS / PhilHealth / HDMF contribution deductions (V1 frequency + contribution table).
  * Everything is applied to the test employee only and deleted after its check.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { config } from '../config.js';
 import { pathOf, origin } from '../app.js';
 import {
   pass, fail, PARTIAL, markerFor, ymd, nextCutoff, pickDate, setFrequency, saveOutcome, findInList, deleteRow,
-  fillFooter, toastOutcome, deleteViaRow, rowWithText, setIndefinite, pickTestEmployeeAny, expectRefused,
+  fillFooter, toastOutcome, deleteViaRow, rowWithText, setIndefinite, setEffectivity, pickTestEmployeeAny, expectRefused,
 } from './common.js';
 
 const blocked = notes => ({ result: 'Blocked', notes });
@@ -48,11 +50,45 @@ async function fillOpRow(page, i, day, start, end, endDay) {
   if (end) await rowTime(page, r, 'Time End', end);
 }
 
+// Scenarios this form has nothing for: say so, never save a normal record and call it a pass.
+const BOOM_MANUAL = [
+  [/^Different rates/, 'Needs a test employee with two Boom Truck rates; check by hand.'],
+  [/^(Total Amount = 0|Negative amount)/, 'Boom Truck has no amount field (premium = hours x rate); check by hand.'],
+  [/^Near-duplicate/, 'The name is locked and this page has no near-duplicate check; check by hand.'],
+  [/^Exclude employees/, 'Excluding employees is not automated yet; check by hand.'],
+  [/^Effective From after To/, 'An Effective To before From is not automated yet; check by hand.'],
+];
+const BOOM_HANDLED = /^(Add: |Save with required|Name is locked|Long texts|No attachment and box unticked|Attachment over|Attachment wrong type|No Document Attached|Same-day|Overnight|Overlapping rows|Incomplete row|Date outside pay period|Multiple rows)/;
+
 async function boomTruck(ctx, row, { url, runId, keep, done }) {
   const page = ctx.page, s = sc(row);
-  if (/^Different rates/.test(s)) return blocked('Needs a test employee with two Boom Truck rates; check by hand.');
+  for (const [re, why] of BOOM_MANUAL) if (re.test(s)) return blocked(why);
+  if (!BOOM_HANDLED.test(s)) return blocked(`"${s}" is not automated yet; check by hand.`);
   const listUrl = listOf(url);
   await open(page, listUrl + '/add', 'textarea[name="description"]');
+  const formPath = pathOf(page.url());
+  const verdict = r => (r.ok ? pass(r.note) : fail(r.note));
+  // Checks that need no saved record.
+  if (/^Save with required/.test(s)) { await submit(page, 'Save Boom Truck Premium'); return verdict(await expectRefused(page, null, formPath)); }
+  if (/^Name is locked/.test(s)) {
+    const n = page.locator('input[name="nameOfAddition"]');
+    const locked = await n.evaluate(e => e.readOnly || e.disabled || getComputedStyle(e).pointerEvents === 'none');
+    return locked ? pass(`Name is locked: "${await n.inputValue()}".`) : fail('The name field can be edited.');
+  }
+  if (/^Long texts/.test(s)) {
+    const d = page.locator('textarea[name="description"]');
+    await d.fill('A'.repeat(600));
+    const len = (await d.inputValue()).length;
+    return len <= 500 ? pass(`Description capped at ${len} characters.`) : fail(`Description accepted ${len} characters.`);
+  }
+  if (/^Attachment (over|wrong type)/.test(s)) {
+    const name = String(row.raw['Reference File'] || '').split(',')[0].trim();
+    const file = path.join(config.data.filesDir, name);
+    if (!fs.existsSync(file)) return blocked(`Test file ${name} is missing; run npm run make-test-files.`);
+    await page.setInputFiles('#uploadAttachment', file);
+    const r = await expectRefused(page, /exceeds|not allowed|accepted/i, formPath);
+    return r.ok ? pass(`${r.note} (${name})`) : fail(r.note);
+  }
   const marker = markerFor(runId, row);
   await page.fill('textarea[name="description"]', marker);
   await pickTestEmployeeAny(page, { value: 'employee' });
@@ -84,6 +120,12 @@ async function boomTruck(ctx, row, { url, runId, keep, done }) {
     else await fillOpRow(page, 1, next, '8:00 AM', '12:00 PM');
   }
   done.push('operation rows filled');
+  if (/^No attachment and box unticked/.test(s)) {
+    // Reason only: no file and "No Document Attached" left unticked must be refused.
+    await page.fill('textarea#reason', 'QA automated test');
+    await submit(page, 'Save Boom Truck Premium');
+    return verdict(await expectRefused(page, /attachment|approval reference/i, startPath));
+  }
   const ref = String(row.raw['Reference File'] || '');
   await fillFooter(page, row, runId, done, ref && ref !== '-' ? ref : 'valid-document.pdf');
   await submit(page, 'Save Boom Truck Premium');
@@ -109,26 +151,45 @@ async function longevity(ctx, row, { url, runId, keep, done }) {
   if (/no employees/i.test(s)) return blocked('Needs a branch/department with no employees; check by hand.');
   const listUrl = listOf(url);
   await open(page, listUrl + '/add', 'textarea#description');
-  const ref = await page.locator('input[name=referenceNo]').inputValue().catch(() => '');
   const startPath = pathOf(page.url());
-  if (!/Name blank/.test(s)) await page.fill('input[name=nameOfAddition]', `QA-AUTO ${row.id}`);
-  await page.fill('textarea#description', markerFor(runId, row));
-  await setIndefinite(page, !/Effective To missing/.test(s));
+  // The list shows the name, not the description, and the reference number is only assigned on save: name it with the marker.
+  const marker = markerFor(runId, row);
+  if (!/Name blank/.test(s)) await page.fill('input[name=nameOfAddition]', marker);
+  await page.fill('textarea#description', marker);
+  if (/Effective To set/.test(s)) {
+    // A real end date three months out (was: always Indefinite, so these rows never set one).
+    const now = new Date(), to = new Date(now.getFullYear(), now.getMonth() + 3, 28);
+    await setEffectivity(page, null, to);
+    done.push('Effective To ' + ymd(to));
+  } else if (/Effective To missing/.test(s)) {
+    // Unticking Indefinite fills Effective To with today, so the field can't be left empty: check that, save nothing.
+    await setIndefinite(page, false);
+    const to = (await page.getByRole('button', { name: /^To:/ }).first().innerText().catch(() => '')).replace(/^To:\s*/, '').trim();
+    return to && !/pick|select/i.test(to) ? pass(`Effective To cannot be left empty: unticking Indefinite filled it with ${to}.`)
+      : fail('Indefinite unticked and Effective To left empty.');
+  } else await setIndefinite(page, true);
   done.push(await v1Frequency(page, String(row.raw['Frequency (FOA)'] || '')));
   await pickTestEmployeeAny(page, { value: 'employee' });
   done.push(`applied to ${config.data.employeeEid} only`);
   await fillFooter(page, row, runId, done);
   await submit(page, 'Save Longevity Pay');
-  if (/Name blank|Effective To missing/.test(s)) { const r = await expectRefused(page, null, startPath); return r.ok ? pass(r.note) : fail(r.note); }
+  if (/Name blank/.test(s)) { const r = await expectRefused(page, null, startPath); return r.ok ? pass(r.note) : fail(r.note); }
+  // Watch for the overlap dialog, the success toast and the redirect together: waiting 6 s for the dialog first
+  // let the toast vanish with the redirect, so a saved record was reported as unconfirmed and never deleted.
   const overlap = page.getByRole('alertdialog').filter({ hasText: 'Please remove the following records' });
-  if (await overlap.waitFor({ timeout: 6000 }).then(() => true).catch(() => false)) {
-    await overlap.getByRole('button', { name: 'Adjust the Records' }).click().catch(() => {});
-    return blocked('The test employee already has a longevity record in this range; the app blocks overlapping records.');
+  let saved = { ok: false, note: 'No confirmation after ' + config.pageTimeoutMs / 1000 + 's' };
+  for (const end = Date.now() + config.pageTimeoutMs; Date.now() < end;) {
+    if (await overlap.isVisible().catch(() => false)) {
+      // "Adjust the Records" only closes the dialog; nothing is changed.
+      await overlap.getByRole('button', { name: 'Adjust the Records' }).click().catch(() => {});
+      return blocked('The test employee already has a longevity record in this range; the app blocks overlapping records.');
+    }
+    const t = await toastOutcome(page, /Longevity Pay Added/i, { timeout: 300 });
+    if (t.ok || /^Refused/.test(t.note)) { saved = t; break; }
+    if (pathOf(page.url()) !== startPath) { saved = { ok: true, note: 'Saved (back on the list)' }; break; }
   }
-  const saved = await toastOutcome(page, /Longevity Pay Added/i);
   if (!saved.ok) return fail(saved.note + ' | ' + done.join('; '));
-  done.push('reference ' + ref);
-  ctx.created = { label: ref, cleanup: () => findInList(page, listUrl, ref).then(r => deleteRow(page, r)) };
+  ctx.created = { label: marker, cleanup: () => findInList(page, listUrl, marker).then(r => deleteRow(page, r)) };
   return finish(ctx, keep, done);
 }
 
@@ -194,7 +255,8 @@ async function cleanupAll(ctx, base) {
       if (!d.ok) throw new Error(d.note);
     });
   }
-  // Longevity rows show the reference number, not the description: those are removed per run only.
+  // Longevity rows show the name, which this tool sets to "QA-AUTO <TC ID>" (a leftover blocks every later add: overlap).
+  await loop(() => findInList(page, base + '/payroll/addition/longevity-pay', 'QA-AUTO').then(r => deleteRow(page, r)));
   return n;
 }
 

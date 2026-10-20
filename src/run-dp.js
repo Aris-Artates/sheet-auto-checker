@@ -62,7 +62,11 @@ const ctx = browser ? { page: await (await browser.newContext({ viewport: { widt
 if (opt('cleanup')) {
   const r = await login(ctx.page, base + '/', account);
   if (!r.ok) die('Login failed: ' + r.message);
-  const n = await cleanupLeftovers(ctx, base, { dotnetConfirmed });
+  // The picked groups only (was: every group, risky ones too); risky groups stay out unless unlocked.
+  const pick = typeof opt('groups') === 'string' ? opt('groups').split(',').map(s => s.trim()) : null;
+  const groups = GROUPS.filter(g => g.automated && (!pick || pick.includes(g.key)) && (!g.risky || config.data.risky)).map(g => g.key);
+  console.log(`Cleaning up: ${GROUPS.filter(g => groups.includes(g.key)).map(g => g.label).join(', ')}`);
+  const n = await cleanupLeftovers(ctx, base, { dotnetConfirmed, groups });
   console.log(`Deleted ${n} leftover QA-AUTO records.`);
   console.log(summaryLine({ kind: 'cleanup', removed: n }));
   await browser.close();
@@ -134,8 +138,11 @@ for (const row of rows) {
 }
 await flush();
 await browser.close();
-const fails = results.filter(x => x.result !== 'Pass').length;
+// Blocked (check by hand) is counted on its own, not as a Fail.
+const passes = results.filter(x => x.result === 'Pass').length, blockedN = results.filter(x => x.result === 'Blocked').length;
+const fails = results.length - passes - blockedN;
 const csv = path.join(outDir, 'results.csv');
-console.log(`\nDone: ${results.length - fails} Pass, ${fails} Fail. CSV: ${csv}`);
-console.log(summaryLine({ kind: 'data', pass: results.length - fails, fail: fails, csv, pushed: opt('push') ? pushedUpTo : 0 }));
-await notify('QA data run finished', `${results.length - fails} Pass, ${fails} Fail`);
+const counts = `${passes} Pass, ${fails} Fail${blockedN ? `, ${blockedN} Blocked` : ''}`;
+console.log(`\nDone: ${counts}. CSV: ${csv}`);
+console.log(summaryLine({ kind: 'data', pass: passes, fail: fails, blocked: blockedN, csv, pushed: opt('push') ? pushedUpTo : 0 }));
+await notify('QA data run finished', counts);
