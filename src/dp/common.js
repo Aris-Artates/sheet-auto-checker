@@ -125,20 +125,57 @@ export const DELETE_BTN = '[data-action^="delete"], [data-action^="d-"], i.fa-tr
 
 /** The "by record" view of a list page: deductions call it by-trans, additions/benefits by-eligibility. */
 export async function findInList(page, listUrl, marker) {
+  // Benefits lists never show the description (the name cell is always the benefit's name), and their by-employee
+  // view has no per-record rows: look the record up in by-eligibility's row data and find it by its Reference.
+  const benefits = listUrl.includes('/benefits/');
   // Try the page's own view first; the other one only costs a wasted wait.
-  for (const view of listUrl.includes('/deduction/') ? ['by-trans', 'by-eligibility'] : ['by-eligibility', 'by-trans']) {
+  const views = benefits ? ['by-eligibility'] : listUrl.includes('/deduction/') ? ['by-trans', 'by-eligibility'] : ['by-eligibility', 'by-trans'];
+  for (const view of views) {
     await page.goto(`${listUrl}?filter=${view}`, { waitUntil: 'load' });
     await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-    // Lists cut descriptions to 20 characters ("QA-AUTO 10200929 DPP...") before searching them, so search that much
-    // and pick the exact row by its full text (shown in the cell, or kept in data-full-text).
     const search = page.locator('input[placeholder="Search"]').first();
-    if (await search.isVisible().catch(() => false)) await search.fill(marker.slice(0, 20).trim());
     const rows = page.locator('table tbody tr');
-    const row = rows.filter({ hasText: marker }).or(rows.filter({ has: page.locator(`[data-full-text="${marker}"]`) }))
-      .filter({ has: page.locator(DELETE_BTN) }).first();
-    if (await row.waitFor({ timeout: 12000 }).then(() => true).catch(() => false)) return row;
+    if (!benefits) {
+      // Lists cut descriptions to 20 characters ("QA-AUTO 10200929 DPP...") before searching them, so search that much
+      // and pick the exact row by its full text (shown in the cell, or kept in data-full-text).
+      if (await search.isVisible().catch(() => false)) await search.fill(marker.slice(0, 20).trim());
+      const row = rows.filter({ hasText: marker }).or(rows.filter({ has: page.locator(`[data-full-text="${marker}"]`) }))
+        .filter({ has: page.locator(DELETE_BTN) }).first();
+      if (await row.waitFor({ timeout: 12000 }).then(() => true).catch(() => false)) return row;
+      continue;
+    }
+    const ref = await referenceFor(page, marker);
+    if (!ref) continue;
+    if (await search.isVisible().catch(() => false)) await search.fill(ref);
+    // Match the whole cell: a row's text runs its cells together ("...21RA-0471Rice..."), so no word boundaries.
+    const refCell = page.locator('td', { hasText: new RegExp(`^\\s*${ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) });
+    const byRef = rows.filter({ has: refCell }).filter({ has: page.locator(DELETE_BTN) }).first();
+    if (await byRef.waitFor({ timeout: 8000 }).then(() => true).catch(() => false)) return byRef;
   }
   throw new Error('not found');
+}
+
+/** The Reference of the first DataTables record whose description starts with `marker`, or null. */
+async function referenceFor(page, marker) {
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    // undefined = no table data yet (keep waiting); null = data loaded, no such record.
+    const ref = await page.evaluate(m => {
+      const $ = window.jQuery;
+      if (!$?.fn?.dataTable) return undefined;
+      let loaded = false;
+      for (const t of $.fn.dataTable.tables()) {
+        const data = $(t).DataTable().rows().data().toArray();
+        if (data.length) loaded = true;
+        const hit = data.find(x => String(x?.tbldata?.description ?? x?.description ?? '').startsWith(m));
+        if (hit) return hit.reference ? String(hit.reference) : null;
+      }
+      return loaded ? null : undefined;
+    }, marker).catch(() => undefined);
+    if (ref !== undefined) return ref;
+    await sleep(500);
+  }
+  return null;
 }
 
 export async function deleteRow(page, row) {

@@ -40,6 +40,13 @@ async function rowTime(page, rowBox, label, time) {
   await cols.nth(2).getByRole('button', { name: ap.toUpperCase(), exact: true }).click();
   await page.keyboard.press('Escape');
 }
+/** A one-hour operation slot for a TC ("DPPA-0105" -> 3:00 PM - 4:00 PM): 7 AM, then 12 PM to 9 PM. */
+const BOOM_HOURS = [7, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+function boomSlot(id) {
+  const h = BOOM_HOURS[Number(String(id).match(/(\d+)$/)?.[1] || 0) % BOOM_HOURS.length];
+  const fmt = x => `${x % 12 || 12}:00 ${x < 12 ? 'AM' : 'PM'}`;
+  return [fmt(h), fmt(h + 1)];
+}
 const opRows = page => page.locator('div.border.border-gray-300.rounded-md').filter({ has: page.locator('text=/Date Start|Time Start/') });
 
 async function fillOpRow(page, i, day, start, end, endDay) {
@@ -111,14 +118,20 @@ async function boomTruck(ctx, row, { url, runId, keep, done }) {
     await page.keyboard.press('Escape');
     return disabled ? pass('Dates outside the pay period cannot be picked.') : fail('A date outside the pay period is selectable.');
   }
+  // Each test gets its own one-hour slot, picked from its TC number: records kept with --keep (or left over) sit
+  // on the same dates for the same employee, and a shared 8-12 slot made every later save a "Time Conflict".
+  // 8 AM-12 PM is skipped (older runs used it) and so is 6 AM (where the Overnight row ends).
+  const [from, to] = boomSlot(row.id);
   if (/Overnight/.test(s)) await fillOpRow(page, 0, day, '10:00 PM', '6:00 AM', next);
-  else if (/Incomplete row/.test(s)) await fillOpRow(page, 0, day, '8:00 AM', null);
-  else await fillOpRow(page, 0, day, '8:00 AM', '12:00 PM');
+  else if (/Incomplete row/.test(s)) await fillOpRow(page, 0, day, from, null);
+  else if (/Overlapping rows/.test(s)) await fillOpRow(page, 0, day, '8:00 AM', '12:00 PM');
+  else await fillOpRow(page, 0, day, from, to);
   if (/Overlapping rows|Multiple rows/.test(s)) {
     await opRows(page).last().locator('button.bg-green-100, button:has(svg.lucide-plus)').last().click();
     if (/Overlapping/.test(s)) await fillOpRow(page, 1, day, '11:00 AM', '2:00 PM');
-    else await fillOpRow(page, 1, next, '8:00 AM', '12:00 PM');
+    else await fillOpRow(page, 1, next, from, to);
   }
+  if (!/Overnight|Incomplete row|Overlapping rows/.test(s)) done.push(`time ${from} - ${to}`);
   done.push('operation rows filled');
   if (/^No attachment and box unticked/.test(s)) {
     // Reason only: no file and "No Document Attached" left unticked must be refused.
@@ -204,7 +217,6 @@ const contribOf = url => (pathOf(url).match(/\/payroll\/deduction\/(sss|philheal
 async function contribution(ctx, row, { url, runId, keep, done }) {
   const page = ctx.page, s = sc(row), key = contribOf(url), c = CONTRIB[key];
   if (/No contribution table/.test(s)) return blocked('The default table is pre-selected and cannot be cleared; check by hand.');
-  if (/Compensation missing/.test(s)) return fail('Known bug (from the code): the Compensation boxes are not connected to the save; the monthly rate is always used, so clearing it changes nothing.');
   const listUrl = listOf(url);
   await open(page, listUrl + '/add', 'textarea#description');
   const marker = markerFor(runId, row);
@@ -224,20 +236,39 @@ async function contribution(ctx, row, { url, runId, keep, done }) {
     else done.push('NOTE: no inactive-table warning appeared');
   }
   await page.fill('textarea#description', marker);
+  // The start date starts empty and is required ("Effectivity Start date is required.").
+  const today = new Date();
+  await setEffectivity(page, today, null);
   await setIndefinite(page, true);
+  done.push('effective from ' + ymd(today) + ', indefinite');
   done.push(await v1Frequency(page, String(row.raw['Frequency (FOA)'] || '')));
   await pickTestEmployeeAny(page, { value: 'employee' });
-  done.push(`applied to ${config.data.employeeEid} only (compensation boxes are not used by the save - known bug)`);
-  await fillFooter(page, row, runId, done);
-  await submit(page, c.save);
-  const saved = await toastOutcome(page, c.ok);
-  if (!saved.ok) return fail(saved.note + ' | ' + done.join('; '));
+  done.push(`applied to ${config.data.employeeEid} only`);
   const cleanup = async () => {
     await open(page, listUrl + '?filter=by-trans');
     const tr = await rowWithText(page, marker);
     const d = await deleteViaRow(page, tr, { action: `[data-action="${c.del}"]` });
     if (!d.ok) throw new Error(d.note);
   };
+  if (/Compensation missing/.test(s)) {
+    // The employee table (behind "Show") holds one Compensation box per employee, pre-filled with the monthly rate.
+    // Known bug: the add pages never hand ApplicableToV2 their compensations / onCompensationChange, so the boxes are
+    // not connected to the save and an emptied box still saves with the monthly rate. This checks it for real.
+    await page.getByRole('button', { name: /^Show$/ }).first().click();
+    const comp = page.locator('table input[placeholder="0.00"]').first();
+    await comp.waitFor({ timeout: 8000 });
+    await comp.fill('');
+    await comp.blur();
+    await fillFooter(page, row, runId, done, 'No Document Attached');
+    await submit(page, c.save);
+    const r = await expectRefused(page, /Compensation Required/i, startPath);
+    if (!r.ok) ctx.created = { label: marker, cleanup };
+    return r.ok ? pass(r.note) : fail(r.note + ' | Compensation emptied but ignored: the boxes are not connected to the save (known bug). | ' + done.join('; '));
+  }
+  await fillFooter(page, row, runId, done);
+  await submit(page, c.save);
+  const saved = await toastOutcome(page, c.ok);
+  if (!saved.ok) return fail(saved.note + ' | ' + done.join('; '));
   ctx.created = { label: marker, cleanup };
   return finish(ctx, keep, done);
 }
