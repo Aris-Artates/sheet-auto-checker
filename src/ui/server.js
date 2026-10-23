@@ -139,7 +139,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/run') {
       const { kind, args = [], title } = await readBody(req);
       if (!Array.isArray(args) || args.some(a => typeof a !== 'string')) return send(res, 400, { error: 'bad args' });
-      let script = kind === 'data' ? 'run-dp.js' : 'run.js';
+      let script = kind === 'data' ? 'run-dp.js' : kind === 'paysum' ? 'run-summary.js' : 'run.js';
       const extra = [];
       if (kind === 'ids') {
         // args[0] = ids text; written to a file so long lists don't hit command-line limits.
@@ -150,7 +150,7 @@ const server = http.createServer(async (req, res) => {
         extra.push('--ids-file', file);
       }
       const job = startJob(script, [...args, ...extra], title || 'Run');
-      return send(res, 200, { id: job.id, cmd: `npm run ${script === 'run-dp.js' ? 'qa:dp' : 'qa'} -- ${[...args, ...extra].map(a => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}` });
+      return send(res, 200, { id: job.id, cmd: `npm run ${{ 'run-dp.js': 'qa:dp', 'run-summary.js': 'qa:summary' }[script] || 'qa'} -- ${[...args, ...extra].map(a => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}` });
     }
     if (req.method === 'GET' && url.pathname.startsWith('/api/stream/')) {
       const job = jobs.get(url.pathname.split('/').pop());

@@ -108,6 +108,27 @@ Result says what the app should do; a `Known gap:` note says where it does somet
 Optional settings: `QA_EMPLOYEE_EID_2` (a second test employee, for "Applicable To another
 employee"), `ACCOUNT_PAYROLL_MGMT` and `ACCOUNT_EMPLOYEE` (the view-only / access-denied checks).
 
+## Payroll Summary check (ticket 2168)
+
+`npm run qa:summary -- --period 2026-10-16..2026-10-31` (or the **Payroll Summary check** tab) is a
+read-only audit: for one cutoff it reads every record on 27 source pages (all deductions and loans,
+Other Addition, Refunds, Salary Adjustment, Longevity Pay, the 6 benefits) through the app's own
+API, works out which records are due that cutoff, and checks the Payroll Summary shows each one:
+
+- the right amount for every employee on the record when it is due (One Time on its date, Regular on
+  its 15th / end of month, Installment = its schedule rows in the cutoff);
+- 0 for everyone not on the record, and 0 in cutoffs where it is not due.
+
+Problems go to `results/summary-<time>/findings.csv` (record, employee, expected vs summary
+amount, why); `--dump` also saves the raw data. Rules: `src/summary-check/rules.js`, tested offline
+by `npm run test:summary-check`.
+
+Not checked (yet): benefits not shown on the payslip (the summary has no per-record entry for
+them, only a taxable total), the exact amount of Semi-Monthly regular records (only "more than 0"),
+Longevity Pay amounts (computed from years of service), and pages computed from attendance or
+tables: SSS / PhilHealth / HDMF contributions, overtime, holiday, night shift, boom truck,
+absences and withholding tax.
+
 ## Picking tests by ID
 
 `--only` (both runners, and the Data tests tab) takes single IDs and ranges in sheet order:

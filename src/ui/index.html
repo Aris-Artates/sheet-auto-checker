@@ -148,6 +148,7 @@
   <button data-t="retest">Retest</button>
   <button data-t="summary">Results summary</button>
   <button data-t="data">Data tests</button>
+  <button data-t="paysum">Payroll Summary check</button>
   <button data-t="env">Settings (.env)</button>
   <button data-t="howto">How to use</button>
 </nav>
@@ -267,6 +268,28 @@
     </div>
   </section>
 
+  <!-- ===================== PAYROLL SUMMARY CHECK ===================== -->
+  <section class="tab" id="t-paysum">
+    <div class="card">
+      <h2>Payroll Summary check (read-only)</h2>
+      <p class="hint">For one cutoff, reads every record on the deduction, loan, addition and benefit pages and checks the Payroll Summary picked each one up: the right amount for every employee on the record when it is due, and 0 for everyone else and in cutoffs where it is not due. Changes nothing.</p>
+      <div class="row">
+        <label class="f">Cutoff<div class="seg" id="psCut"><button data-v="this" class="on">This cutoff</button><button data-v="prev">Previous</button><button data-v="custom">Custom</button></div></label>
+        <label class="f">From<input type="text" id="psFrom" placeholder="2026-10-16" style="width:120px"></label>
+        <label class="f">To<input type="text" id="psTo" placeholder="2026-10-31" style="width:120px"></label>
+        <label class="f">Environment<select id="psEnv"><option value="vercel">Vercel</option><option value="dotnet">.NET</option></select></label>
+        <label class="chip"><input type="checkbox" id="psDump"> Save raw data too</label>
+      </div>
+      <details class="cmdbox"><summary>Show the command (to run it from a terminal)</summary><div class="cmd" id="psCmd"></div></details>
+      <div class="row" style="margin-top:12px"><button class="btn primary" id="psGo">Check the Payroll Summary</button></div>
+    </div>
+    <div class="card" id="psCard" style="display:none">
+      <div class="stats" id="psTotals"></div>
+      <div style="max-height:560px;overflow:auto"><table id="psTable"></table></div>
+      <p class="small muted" id="psCsv" style="margin:10px 0 0"></p>
+    </div>
+  </section>
+
   <!-- ===================== ENV ===================== -->
   <section class="tab" id="t-env">
     <div class="card">
@@ -319,6 +342,12 @@
         <li><b>.NET is locked.</b> It only unlocks with <code>ALLOW_DATA_ON_DOTNET=true</code>, and every run then asks you to type <code>DOTNET</code>.</li>
         <li><b>Only some tests:</b> click <b>Load test IDs</b>, then click a row to start a range and another to end it. A range with no end runs to the end of that sheet. Add as many ranges as you like, or type them (<code>DPPD-0559..DPPD-0600, DPB-0241..</code>).</li>
       </ol>
+      <h3>7. Payroll Summary check (read-only)</h3>
+      <ul>
+        <li><b>Payroll Summary check</b> tab: pick the cutoff (this one, the previous one, or custom dates) and click <b>Check the Payroll Summary</b>.</li>
+        <li>It reads every deduction, loan, addition and benefit record and checks each one shows in the Payroll Summary with the right amount, for the right employees, in the right cutoff. Nothing is changed.</li>
+        <li>The table shows one line per source page; every problem (record, employee, expected and summary amounts) is in the CSV it names.</li>
+      </ul>
       <h3>6. Edit tests ("Edit: ..." rows)</h3>
       <ul>
         <li>Each one creates a <code>QA-AUTO</code> record, opens its edit page, makes one change (a frequency switch, one extra letter, a copy of another record...), saves, checks the result and deletes the record.</li>
@@ -673,18 +702,51 @@ function startRun(kind, args, title) {
     $('#logCard').scrollIntoView({ behavior: 'smooth' });
     let p = 0, f = 0;
     const es = new EventSource('/api/stream/' + id);
-    es.onmessage = e => { const { line } = JSON.parse(e.data); const cls = /^\s*Pass\b/.test(line) ? 'p' : /^\s*Fail\b|FAILED|refused|error/i.test(line) ? 'f' : /SKIP|WARNING|!!/.test(line) ? 'w' : '';
-      if (cls === 'p') p++; if (cls === 'f' && /^\s*Fail\b/.test(line)) f++;
+    es.onmessage = e => { const { line } = JSON.parse(e.data); const cls = /^\s*(Pass|OK)\b/.test(line) ? 'p' : /^\s*Fail\b|FAILED|refused|error/i.test(line) ? 'f' : /SKIP|WARNING|^\s*WARN\b|!!/.test(line) ? 'w' : '';
+      if (cls === 'p') p++; if (cls === 'f' && /^\s*Fail\b/i.test(line)) f++;
       const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = line; const log = $('#log'); const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 30; log.appendChild(d); if (atEnd) log.scrollTop = log.scrollHeight;
       $('#logStats').innerHTML = `<div class="stat pass"><b>${p}</b>Pass</div><div class="stat fail"><b>${f}</b>Fail</div><div class="stat"><b>${Math.round((Date.now() - current.started) / 1000)}s</b>Elapsed</div>`; };
     es.addEventListener('done', e => { es.close(); current.done = true; const { code, summary } = JSON.parse(e.data);
-      const msg = summary && summary.pass != null ? `${summary.pass} Pass, ${summary.fail} Fail${summary.blocked ? `, ${summary.blocked} Blocked` : ''}` : code === 0 ? 'Finished' : 'Stopped / error (see log)';
+      const msg = summary?.kind === 'summary-check' ? `${summary.fail} problems, ${summary.warn} warnings`
+        : summary && summary.pass != null ? `${summary.pass} Pass, ${summary.fail} Fail${summary.blocked ? `, ${summary.blocked} Blocked` : ''}` : code === 0 ? 'Finished' : 'Stopped / error (see log)';
+      if (summary?.kind === 'summary-check') renderPaysum(summary);
       const d = document.createElement('div'); d.className = code === 0 ? 'p' : 'f'; d.textContent = `\n=== ${title}: ${msg} ===`; $('#log').appendChild(d); $('#log').scrollTop = 1e9;
       document.title = `Done: ${msg} - QA Runner`;
       if ('Notification' in window && Notification.permission === 'granted') new Notification('QA Runner: ' + title, { body: msg });
       if (kind === 'access' || kind === 'ids') STATUS = null; });
   }).catch(e => alert(e.message));
 }
+// ---------- Payroll Summary check tab
+const pad2 = n => String(n).padStart(2, '0');
+function cutoffOf(d) {
+  const y = d.getFullYear(), m = d.getMonth() + 1, end = new Date(y, m, 0).getDate();
+  return d.getDate() <= 15 ? [`${y}-${pad2(m)}-01`, `${y}-${pad2(m)}-15`] : [`${y}-${pad2(m)}-16`, `${y}-${pad2(m)}-${pad2(end)}`];
+}
+function setCut(which) {
+  $$('#psCut button').forEach(b => b.classList.toggle('on', b.dataset.v === which));
+  const now = new Date();
+  if (which === 'this') [$('#psFrom').value, $('#psTo').value] = cutoffOf(now);
+  if (which === 'prev') { const [from] = cutoffOf(now); const d = new Date(from + 'T00:00:00'); d.setDate(d.getDate() - 1); [$('#psFrom').value, $('#psTo').value] = cutoffOf(d); }
+  updatePsCmd();
+}
+const psArgs = () => ['--period', `${$('#psFrom').value.trim()}..${$('#psTo').value.trim()}`, ...($('#psEnv').value === 'dotnet' ? ['--target', 'dotnet'] : []), ...($('#psDump').checked ? ['--dump'] : [])];
+function updatePsCmd() { $('#psCmd').textContent = 'npm run qa:summary -- ' + psArgs().map(q).join(' '); }
+$$('#psCut button').forEach(b => b.onclick = () => setCut(b.dataset.v));
+['#psFrom', '#psTo'].forEach(s => $(s).addEventListener('input', () => { $$('#psCut button').forEach(b => b.classList.toggle('on', b.dataset.v === 'custom')); updatePsCmd(); }));
+$('#psEnv').oninput = $('#psDump').onchange = updatePsCmd;
+$('#psGo').onclick = () => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test($('#psFrom').value.trim()) || !/^\d{4}-\d{2}-\d{2}$/.test($('#psTo').value.trim())) return alert('Enter the cutoff as YYYY-MM-DD dates.');
+  startRun('paysum', psArgs(), `Payroll Summary check ${$('#psFrom').value} to ${$('#psTo').value}`);
+};
+function renderPaysum(s) {
+  $('#psCard').style.display = '';
+  $('#psTotals').innerHTML = `<div class="stat ${s.fail ? 'fail' : 'pass'}"><b>${s.fail}</b>Problems</div><div class="stat ${s.warn ? 'warn' : ''}"><b>${s.warn}</b>Warnings</div><div class="stat"><b>${s.categories.reduce((a, c) => a + (c.due || 0), 0)}</b>Records due this cutoff</div><div class="stat"><b>${s.categories.reduce((a, c) => a + (c.pairsOk || 0), 0)}</b>Employee checks OK</div>`;
+  $('#psTable').innerHTML = '<tr><th>Source page</th><th>Result</th><th>Records</th><th>Due this cutoff</th><th>Employee checks OK</th><th>Problems</th><th>Not checked</th></tr>'
+    + s.categories.map(c => `<tr><td>${esc(c.label)}</td><td>${c.error ? `<span class="tag Fail">ERROR</span> ${esc(c.error)}` : c.fail ? '<span class="tag Fail">FAIL</span>' : c.warn ? '<span class="tag">WARN</span>' : '<span class="tag Pass">OK</span>'}</td><td>${c.records ?? '-'}</td><td>${c.due ?? '-'}</td><td>${c.pairsOk ?? '-'}</td><td>${(c.fail || 0) + (c.warn || 0) || ''}</td><td class="small muted">${[c.skippedInactive ? `${c.skippedInactive} inactive` : '', c.notPerRecord ? `${c.notPerRecord} not on payslip` : ''].filter(Boolean).join(', ')}</td></tr>`).join('');
+  $('#psCsv').textContent = `Every problem, with the record, employee, expected and summary amounts: ${s.csv}`;
+}
+setCut('this');
+
 $('#logStop').onclick = () => current && api('/api/stop/' + current.id, { method: 'POST' });
 $('#logClose').onclick = () => $('#logCard').style.display = 'none';
 window.addEventListener('focus', () => { if (current?.done) applyTheme(); });

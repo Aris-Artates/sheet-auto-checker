@@ -11,7 +11,9 @@
     "qa:dp": "node src/run-dp.js",
     "ui": "node src/ui/server.js",
     "make-test-files": "node src/make-big-files.js",
-    "make-edit-rows": "node src/make-edit-rows.js"
+    "make-edit-rows": "node src/make-edit-rows.js",
+    "qa:summary": "node src/run-summary.js",
+    "test:summary-check": "node src/summary-check/rules.test.js"
   },
   "dependencies": {
     "dotenv": "16.4.5",
