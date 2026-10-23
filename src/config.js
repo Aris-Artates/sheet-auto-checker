@@ -23,6 +23,8 @@ export const config = {
   urls: { vercel: stripSlash(env('APP_URL_VERCEL')), dotnet: stripSlash(env('APP_URL_DOTNET')) },
   data: {
     employeeEid: env('QA_EMPLOYEE_EID'),
+    // Optional: a second test employee, for the "Applicable To another employee" edit rows.
+    employeeEid2: env('QA_EMPLOYEE_EID_2'),
     filesDir: path.resolve(ROOT, env('QA_FILES_DIR', 'test-files')),
     allowDotnet: bool('ALLOW_DATA_ON_DOTNET'),
     risky: bool('ALLOW_RISKY_PAGES'),

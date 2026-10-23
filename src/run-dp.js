@@ -4,7 +4,9 @@
  *   --groups deductions,additions,benefits   page groups (default: every automated, non-risky group)
  *   --page payroll/deduction/fuel  one list page (full path from the UI picker; a short ending like fuel also works)
  *   --only DPPD-0001,DPPD-0002     only these TC IDs     --ids-file ids.txt   IDs from a file
+ *                                  ranges work in both: DPPD-0559..DPPD-0600, DPB-0241.. (to the end of its sheet)
  *   --limit 5                      stop after N rows
+ *   --list-ids                     print the automated rows (ID, page, scenario) for the UI's picker, then stop
  *   --keep                         do not delete the records afterwards (for inspection)
  *   --cleanup                      only delete leftover "QA-AUTO" records, then stop
  *   --coverage                     show which pages are automated, then stop (no browser, no data)
@@ -23,6 +25,7 @@ import { loadFromWebapp, loadFromXlsx, pushResults, writeCsv } from './sheet.js'
 import { login, pathOf, waitForSplash } from './app.js';
 import { GROUPS, groupOf, listPathOf, dpAutomatable, runDpRow, cleanupLeftovers, assertWritable } from './dp.js';
 import { notify, summaryLine } from './notify.js';
+import { parseSelection, selectIds } from './selection.js';
 
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i < 0 ? dflt : (args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : true); };
@@ -33,6 +36,19 @@ const ask = async q => { const rl = readline.createInterface({ input: process.st
 if (opt('coverage')) {
   for (const g of GROUPS) console.log(`${g.automated ? 'AUTOMATED ' : 'NOT YET   '} ${g.risky ? 'RISKY ' : '      '} ${g.label} (${g.pages.length} pages)`);
   console.log(summaryLine({ kind: 'coverage', groups: GROUPS.map(g => ({ key: g.key, label: g.label, risky: g.risky, automated: !!g.automated, pages: g.pages })) }));
+  process.exit(0);
+}
+
+// ---- the automated rows, for the UI's ID picker (no browser, no data)
+if (opt('list-ids')) {
+  const xl = opt('xlsx');
+  const loaded = typeof xl === 'string' ? await loadFromXlsx(xl) : await loadFromWebapp();
+  const ids = loaded.filter(r => r.sheet.startsWith('DP - ') && dpAutomatable(r)).map(r => ({
+    id: r.id, sheet: r.sheet, group: groupOf(r)?.key || null, list: listPathOf(r.vercel || 'https://x/').replace(/^\//, ''),
+    page: r.page, scenario: String(r.raw?.Scenario || ''),
+  }));
+  console.log(`${ids.length} automated rows.`);
+  console.log(summaryLine({ kind: 'ids', ids }));
   process.exit(0);
 }
 
@@ -79,15 +95,20 @@ const chosen = GROUPS.filter(g => g.automated && (wantGroups ? wantGroups.includ
 const risky = chosen.filter(g => g.risky);
 if (risky.length && !config.data.risky) die(`These groups can affect EVERYONE's payroll: ${risky.map(g => g.label).join(', ')}.\nSet ALLOW_RISKY_PAGES=true in .env to allow them.`);
 
-let only = typeof opt('only') === 'string' ? opt('only').split(',').map(s => s.trim()) : null;
-if (typeof opt('ids-file') === 'string') only = fs.readFileSync(opt('ids-file'), 'utf8').split(/\r?\n/).map(l => l.trim().split('@')[0]).filter(Boolean);
+let selection;
+try {
+  selection = parseSelection(typeof opt('only') === 'string' ? opt('only') : null);
+  if (typeof opt('ids-file') === 'string') selection = parseSelection(fs.readFileSync(opt('ids-file'), 'utf8').split(/\r?\n/).map(l => l.trim().split('@')[0]).join('\n'));
+} catch (e) { die(e.message); }
 const pageFilter = typeof opt('page') === 'string' ? opt('page').replace(/^\/+/, '') : null;
 
 const xlsx = opt('xlsx');
 const all = typeof xlsx === 'string' ? await loadFromXlsx(xlsx) : await loadFromWebapp();
+let only;
+try { only = selectIds(all.filter(r => r.sheet.startsWith('DP - ')), selection); } catch (e) { die(e.message); }
 let rows = all.filter(r => r.sheet.startsWith('DP - ') && dpAutomatable(r))
   .filter(r => chosen.includes(groupOf(r)))
-  .filter(r => !only || only.includes(r.id))
+  .filter(r => !only || only.has(r.id))
   // Match on the list page (so /payroll/rates/add/salary counts as /payroll/rates); a full path never hits loan/sss for sss.
   .filter(r => { if (!pageFilter) return true; const lp = listPathOf(r.vercel || 'https://x/'); return lp === '/' + pageFilter || lp.endsWith('/' + pageFilter); });
 rows = rows.slice(0, Number(opt('limit', 0)) || Infinity);

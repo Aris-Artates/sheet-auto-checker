@@ -13,9 +13,12 @@
  * can run (match) and runs one: fill, save, verify, and register a cleanup in ctx.created.
  */
 import { config } from './config.js';
-import { pathOf, origin } from './app.js';
+import { pathOf, origin, listPathOf } from './app.js';
 import { pass, fail } from './dp/common.js';
 import { v2Handlers, v2Cleanup } from './dp/v2-handler.js';
+import { editV2Handlers } from './dp/edit-v2.js';
+import { editLockHandlers } from './dp/edit-locks.js';
+import { editMasterHandlers } from './dp/edit-master.js';
 import { specialHandlers } from './dp/special.js';
 import { employeeHandlers } from './dp/employees.js';
 import { rateHandlers } from './dp/rates.js';
@@ -23,27 +26,26 @@ import { otherHandlers } from './dp/other.js';
 
 const D = '/payroll/deduction/', A = '/payroll/addition/', B = '/benefits/';
 export const GROUPS = [
-  { key: 'deductions', label: 'Payroll Deductions', risky: false, handlers: v2Handlers, pages: [
+  { key: 'deductions', label: 'Payroll Deductions', risky: false, handlers: [...v2Handlers, ...editV2Handlers], pages: [
     D + 'accounts-receivable', D + 'fuel', D + 'motorcycle', D + 'power-bill', D + 'provident-fund', D + 'union-dues',
     D + 'klcc/canteen-grocery', D + 'klcc/cash-advance', D + 'klcc/health-care-premium', D + 'loan/dbp', D + 'loan/hdmf-calamity',
     D + 'loan/hdmf-mpl', D + 'loan/lbp', D + 'loan/sss-calamity', D + 'loan/sss', D + 'other', D + 'salary-adjustment'] },
-  { key: 'additions', label: 'Payroll Additions', risky: false, handlers: v2Handlers, pages: [A + 'other', A + 'refund', A + 'salary-adjustment'] },
-  { key: 'benefits', label: 'Benefits', risky: false, handlers: v2Handlers, pages: [B + 'rice-allowance', B + 'hazard-pay', B + 'water-subsidy', B + 'cola', B + 'lighting-allowance', B + 'meal-allowance'] },
-  { key: 'special', label: 'Boom Truck, Longevity, SSS/PhilHealth/HDMF contributions', risky: false, handlers: specialHandlers, pages: [
+  { key: 'additions', label: 'Payroll Additions', risky: false, handlers: [...v2Handlers, ...editV2Handlers], pages: [A + 'other', A + 'refund', A + 'salary-adjustment'] },
+  { key: 'benefits', label: 'Benefits', risky: false, handlers: [...v2Handlers, ...editV2Handlers], pages: [B + 'rice-allowance', B + 'hazard-pay', B + 'water-subsidy', B + 'cola', B + 'lighting-allowance', B + 'meal-allowance'] },
+  { key: 'special', label: 'Boom Truck, Longevity, SSS/PhilHealth/HDMF contributions', risky: false, handlers: [...specialHandlers, ...editLockHandlers], pages: [
     A + 'boom-truck-premium', A + 'longevity-pay', D + 'sss', D + 'philhealth', D + 'hdmf'] },
-  { key: 'employees', label: 'Employees + master data', risky: false, handlers: employeeHandlers, pages: ['/employees', '/employees/department', '/employees/branch', '/employees/employment', '/employees/paygroup'] },
-  { key: 'rates', label: 'Rates + Gov tables', risky: true, handlers: rateHandlers, pages: ['/payroll/rates', '/payroll/sss', '/payroll/philhealth-table', '/payroll/hdmf-table', '/payroll/withholding-tax'] },
-  { key: 'other', label: 'Payments, Leave, Users, Officers, Settings', risky: true, handlers: otherHandlers, pages: [
+  // Read-only: computed pages that must offer no edit (OT, holiday, night shift, absences, withholding tax due).
+  { key: 'computed', label: 'Computed pages (edit locks only)', risky: false, handlers: editLockHandlers, pages: [
+    A + 'overtime', A + 'holiday-pay', A + 'night-shift-premium', D + 'absences-undertime-late', D + 'withholdingtaxdue'] },
+  { key: 'employees', label: 'Employees + master data', risky: false, handlers: [...employeeHandlers, ...editMasterHandlers, ...editLockHandlers], pages: ['/employees', '/employees/department', '/employees/branch', '/employees/employment', '/employees/paygroup'] },
+  { key: 'rates', label: 'Rates + Gov tables', risky: true, handlers: [...rateHandlers, ...editLockHandlers], pages: ['/payroll/rates', '/payroll/sss', '/payroll/philhealth-table', '/payroll/hdmf-table', '/payroll/withholding-tax'] },
+  { key: 'other', label: 'Payments, Leave, Users, Officers, Settings', risky: true, handlers: [...otherHandlers, ...editLockHandlers], pages: [
     '/payroll/payments', '/payroll/payments/processor', '/payroll/bank-payments', '/payroll/settings', '/leave/request', '/leave/types', '/leave/tardiness-charged',
     '/leave/undertimes-absences-charged', '/leave/request/monetization', '/users', '/approving/officers', '/approval-requests/payroll', '/approval-requests/leave'] },
 ];
 for (const g of GROUPS) g.automated = g.handlers.length > 0;
 
-/** "/payroll/rates/add/salary" -> "/payroll/rates", "/payroll/deduction/fuel/add" -> "/payroll/deduction/fuel" */
-export const listPathOf = url => {
-  const p = pathOf(url);
-  return p.replace(/\/(add|edit|view)(\/.*)?$/, '').replace(/\/file\/generate$/, '');
-};
+export { listPathOf };
 export const groupOf = row => GROUPS.find(g => g.pages.includes(listPathOf(row.vercel || 'https://x/')));
 
 /** The handler that can run this DP row, or null (= manual). */
@@ -52,7 +54,9 @@ export function handlerFor(row) {
   const g = groupOf(row);
   if (!g) return null;
   const page = listPathOf(row.vercel);
-  return g.handlers.find(h => (!h.pages || h.pages.includes(page)) && h.match(row)) || null;
+  // "Edit: ..." rows only go to edit handlers (ticket 2161): several add handlers match every row of their page.
+  const isEdit = /^Edit: /.test(String(row.raw?.Scenario || ''));
+  return g.handlers.find(h => !!h.edit === isEdit && (!h.pages || h.pages.includes(page)) && h.match(row)) || null;
 }
 export const dpAutomatable = row => !!handlerFor(row);
 

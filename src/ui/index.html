@@ -42,6 +42,15 @@
   .chip:has(input:checked) { background:var(--brand-soft); border-color:#9db8ec; color:#1f4fa3; }
   .chip input { margin:0; accent-color:var(--brand); } .chip.off { opacity:.45; cursor:not-allowed; }
   .chip.risky { border-color:#f2b97a; background:var(--warn-bg); }
+  .idpick { margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+  .idlist { max-height:340px; overflow:auto; border:1px solid var(--line); border-radius:8px; margin-top:10px; }
+  .idlist table { width:100%; border-collapse:collapse; font-size:13px; }
+  .idlist td { padding:6px 10px; cursor:pointer; } .idlist td:first-child { font-family:Consolas, monospace; white-space:nowrap; }
+  .idlist tr:hover td { background:var(--soft); }
+  .idlist tr.sel td { background:var(--brand-soft); } .idlist tr.start td { background:var(--warn-bg); box-shadow:inset 3px 0 0 var(--warn); }
+  .rchip { display:inline-flex; align-items:center; gap:6px; padding:5px 6px 5px 12px; border-radius:999px; background:var(--brand-soft); border:1px solid #9db8ec; color:#1f4fa3; font-size:13px; }
+  .rchip.open { background:var(--warn-bg); border-color:#f7d9b0; color:var(--warn); }
+  .rchip button { border:0; background:none; cursor:pointer; color:inherit; font-size:15px; line-height:1; padding:0 4px; }
   .linkbtn { background:none; border:0; color:var(--brand); cursor:pointer; font:inherit; font-size:13px; padding:0 4px; }
   button.btn { font:inherit; font-size:14px; padding:9px 18px; border-radius:8px; border:1px solid #cfd6e0; background:#fff; cursor:pointer; transition:filter .15s, background .15s; }
   button.btn:hover { background:var(--soft); }
@@ -237,6 +246,18 @@
         <label class="chip"><input type="checkbox" id="dpPush"> Write results to sheet</label>
         <label class="chip"><input type="checkbox" id="dpHeaded"> Show browser</label>
       </div>
+      <div class="idpick">
+        <div class="row" style="align-items:center">
+          <div class="section-label" style="margin:0">Test IDs <span class="small muted" style="font-weight:400">(optional; empty = every row of the picked pages)</span></div>
+          <button class="btn" id="dpLoadIds">Load test IDs</button>
+          <input type="text" id="dpIdFilter" placeholder="Filter by ID, page or scenario" style="min-width:250px;display:none">
+          <span class="small muted" id="dpIdInfo"></span>
+        </div>
+        <div class="chips" id="dpRanges" style="margin-top:10px"></div>
+        <div class="idlist" id="dpIdList" style="display:none"></div>
+        <p class="small muted" id="dpIdHelp" style="display:none;margin:6px 0 0">Click a row to <b>start</b> a range, then click another row to <b>end</b> it. No end = runs to the end of that sheet. Click the same row twice for a single test. Add as many ranges as you like.</p>
+        <label class="f" style="margin-top:10px">Or type IDs / ranges<input type="text" id="dpOnly" placeholder="DPPD-0559..DPPD-0600, DPB-0241.., DPR-0003"></label>
+      </div>
       <details class="cmdbox"><summary>Show the command (to run it from a terminal)</summary><div class="cmd" id="dpCmd"></div></details>
       <div class="row" style="margin-top:12px">
         <button class="btn" id="dpDry">Preview plan</button>
@@ -296,7 +317,14 @@
         <li><b>Preview plan</b> shows exactly which pages and how many records. <b>Create test data...</b> asks you to confirm first.</li>
         <li>Records are deleted at the end of each check. If a run was interrupted, use <b>Clean up leftovers</b>.</li>
         <li><b>.NET is locked.</b> It only unlocks with <code>ALLOW_DATA_ON_DOTNET=true</code>, and every run then asks you to type <code>DOTNET</code>.</li>
+        <li><b>Only some tests:</b> click <b>Load test IDs</b>, then click a row to start a range and another to end it. A range with no end runs to the end of that sheet. Add as many ranges as you like, or type them (<code>DPPD-0559..DPPD-0600, DPB-0241..</code>).</li>
       </ol>
+      <h3>6. Edit tests ("Edit: ..." rows)</h3>
+      <ul>
+        <li>Each one creates a <code>QA-AUTO</code> record, opens its edit page, makes one change (a frequency switch, one extra letter, a copy of another record...), saves, checks the result and deletes the record.</li>
+        <li>Automated today: Deductions, Additions, Benefits, Department / Branch / Employment Type / Pay Group, and the read-only lock checks (no-edit pages, protected gov tables, view-only roles). Edits that would reach other employees (All Employees / a branch / a department) show as <b>Blocked</b>; the other pages' edit rows are not in the list yet: check those by hand.</li>
+        <li>The view-only checks log in as <code>payroll_mgmt</code> and as an employee: fill in those accounts in Settings. <b>Second test employee ID</b> is optional (only the "another employee" rows need it).</li>
+      </ul>
       <h3>Statuses</h3>
       <ul>
         <li><b>Pass</b> - matched the sheet's expected result. For bypass / remnant rows, Pass means the attempt was blocked.</li>
@@ -464,8 +492,9 @@ function renderGroups() {
   $('#groupChips').innerHTML = (COVERAGE?.groups || []).map(g => { const usable = g.automated && (!g.risky || risky);
     return `<label class="chip ${g.risky ? 'risky' : ''} ${usable ? '' : 'off'}" title="${esc(g.pages.join('\n'))}"><input type="checkbox" value="${g.key}" ${usable && !g.risky ? 'checked' : ''} ${usable ? '' : 'disabled'}>${esc(g.label)}${g.risky ? ' &#9888;' : ''}${g.automated ? '' : ' <span class="small">(not automated yet)</span>'}</label>`; }).join('');
   $$('#t-data input, #t-data select').forEach(i => i.oninput = updateDpCmd);
-  $$('#groupChips input').forEach(i => i.onchange = () => { renderPages(); updateDpCmd(); });
-  renderPages(); updateDpCmd();
+  $$('#groupChips input').forEach(i => i.onchange = () => { renderPages(); renderIds(); });
+  $('#dpPage').onchange = () => renderIds();
+  renderPages(); renderIds();
 }
 // Page picker: one option per list page of the checked groups, named relative to the group's folder.
 const ACRONYM = /^(sss|hdmf|phic|cola|klcc|dbp|lbp|mpl)$/i;
@@ -491,11 +520,57 @@ function renderDataLock() {
     : unlocked ? '<div class="banner err"><b>.NET writing is UNLOCKED</b> in Settings. Data tests on .NET may change the live system.</div>' : '';
   if (COVERAGE) renderGroups();
 }
+// ---------- Test ID range picker: click a start row, then an end row (no end = to the end of that sheet)
+let IDS = null, RANGES = [], PENDING = null;
+$('#dpLoadIds').onclick = async () => {
+  $('#dpLoadIds').disabled = true; $('#dpIdInfo').textContent = 'Loading from the sheet (up to a minute)...';
+  try { IDS = (await api('/api/dp-ids')).ids; $('#dpIdFilter').style.display = ''; $('#dpIdList').style.display = ''; $('#dpIdHelp').style.display = ''; renderIds(); }
+  catch (e) { $('#dpIdInfo').textContent = 'Could not load: ' + e.message; }
+  $('#dpLoadIds').disabled = false; $('#dpLoadIds').textContent = 'Reload';
+};
+$('#dpIdFilter').addEventListener('input', () => renderIds());
+const sheetRows = sheet => IDS.filter(r => r.sheet === sheet);
+function rangeIds(r) {
+  const rows = sheetRows(IDS.find(x => x.id === r.from).sheet);
+  let a = rows.findIndex(x => x.id === r.from), b = r.to ? rows.findIndex(x => x.id === r.to) : rows.length - 1;
+  if (a > b) [a, b] = [b, a];
+  return rows.slice(a, b + 1).map(x => x.id);
+}
+function visibleIds() {
+  const groups = $$('#groupChips input:checked').map(i => i.value), pg = $('#dpPage').value, f = $('#dpIdFilter').value.trim().toLowerCase();
+  return IDS.filter(r => groups.includes(r.group) && (!pg || r.list === pg)
+    && (!f || `${r.id} ${r.page} ${r.scenario}`.toLowerCase().includes(f)));
+}
+function renderIds() {
+  if (IDS) {
+    const picked = new Set([...RANGES, ...(PENDING ? [{ from: PENDING, to: null }] : [])].flatMap(rangeIds)), vis = visibleIds();
+    $('#dpIdInfo').textContent = `${vis.length} automated rows shown${picked.size ? `, ${picked.size} selected` : ''}`;
+    $('#dpIdList').innerHTML = `<table>${vis.map(r => `<tr data-id="${esc(r.id)}" class="${r.id === PENDING ? 'start' : picked.has(r.id) ? 'sel' : ''}"><td>${esc(r.id)}</td><td>${esc(r.page)}</td><td>${esc(r.scenario)}</td></tr>`).join('') || '<tr><td class="muted">No automated rows for the picked groups / page.</td></tr>'}</table>`;
+    $$('#dpIdList tr[data-id]').forEach(tr => tr.onclick = () => pickId(tr.dataset.id));
+  }
+  $('#dpRanges').innerHTML = RANGES.map((r, i) => `<span class="rchip">${esc(r.from === r.to ? r.from : `${r.from} → ${r.to}`)} <span class="small">(${rangeIds(r).length})</span><button title="Remove" data-i="${i}">&times;</button></span>`).join('')
+    + (PENDING ? `<span class="rchip open">${esc(PENDING)} → end of sheet <span class="small">(${rangeIds({ from: PENDING }).length}; click an end row, or leave it open)</span><button title="Remove" data-p="1">&times;</button></span>` : '');
+  $$('#dpRanges button').forEach(b => b.onclick = () => { if (b.dataset.p) PENDING = null; else RANGES.splice(+b.dataset.i, 1); renderIds(); });
+  updateDpCmd();
+}
+function pickId(id) {
+  if (!PENDING) PENDING = id;
+  else if (IDS.find(x => x.id === id).sheet !== IDS.find(x => x.id === PENDING).sheet) { toast('A range stays inside one sheet: that row starts a new range.', 'err'); PENDING = id; }
+  else { RANGES.push({ from: PENDING, to: id }); PENDING = null; }
+  renderIds();
+}
+function selectionText() {
+  const picked = [...RANGES, ...(PENDING ? [{ from: PENDING, to: null }] : [])]
+    .map(r => (!r.to ? `${r.from}..` : r.from === r.to ? r.from : `${r.from}..${r.to}`));
+  return [...picked, ...$('#dpOnly').value.split(/[\s,;]+/).filter(Boolean)].join(',');
+}
+
 function dpArgs(extra = []) {
   const a = [], groups = $$('#groupChips input:checked').map(i => i.value);
   if (groups.length) a.push('--groups', groups.join(','));
   if ($('#dpTarget').value === 'dotnet') a.push('--target', 'dotnet');
   if ($('#dpPage').value) a.push('--page', $('#dpPage').value);
+  if (selectionText()) a.push('--only', selectionText());
   if (+$('#dpLimit').value > 0) a.push('--limit', String(+$('#dpLimit').value));
   if ($('#dpKeep').checked) a.push('--keep');
   if ($('#dpPush').checked) a.push('--push');
@@ -511,7 +586,7 @@ $('#dpGo').onclick = async () => {
   const risky = groups.filter(g => g.risky);
   const body = `<p>This will <b>create</b> test records on <b>${dotnet ? '.NET (main)' : 'Vercel (dev)'}</b>${$('#dpKeep').checked ? ' and <b>keep</b> them' : ' and delete each one after its check'}.</p>
     <ul><li>Test employee: <b>${esc(ENV.QA_EMPLOYEE_EID || '(not set)')}</b> only</li><li>Created by: <b>payroll_officer</b> account</li>
-    <li>Groups: ${groups.map(g => esc(g.label)).join(', ')}</li>${$('#dpPage').value ? `<li>Only page: ${esc($('#dpPage').selectedOptions[0].textContent)} (/${esc($('#dpPage').value)})</li>` : ''}${+$('#dpLimit').value > 0 ? `<li>At most ${+$('#dpLimit').value} records</li>` : ''}</ul>
+    <li>Groups: ${groups.map(g => esc(g.label)).join(', ')}</li>${$('#dpPage').value ? `<li>Only page: ${esc($('#dpPage').selectedOptions[0].textContent)} (/${esc($('#dpPage').value)})</li>` : ''}${+$('#dpLimit').value > 0 ? `<li>At most ${+$('#dpLimit').value} records</li>` : ''}${selectionText() ? `<li>Only these tests: <code>${esc(selectionText())}</code></li>` : ''}</ul>
     ${risky.length ? `<div class="banner warn"><b>Risky:</b> ${risky.map(g => esc(g.label)).join(', ')} can affect everyone's payroll while the record exists.</div>` : ''}
     <p class="small muted">Tip: click <b>Preview plan</b> first to see the exact pages and row count.</p>`;
   if (!(await confirmBox(dotnet ? 'WARNING: test data on .NET' : 'Create test data?', body, { red: dotnet || risky.length, typeDotnet: dotnet }))) return;

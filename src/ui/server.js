@@ -24,6 +24,7 @@ export const SCHEMA = [
   ...['NEWQRPHOADMIN', 'PAYROLL_OFFICER', 'PAYROLL_STAFF', 'PAYROLL_APPROVING_OFFICER', 'PAYROLL_MGMT', 'LEAVE_IMMEDIATE_HEAD', 'LEAVE_CAMPUS_ADMIN', 'EMPLOYEE', 'INVALID_ROLES', 'NO_ROLES']
     .map(r => ({ group: 'Test accounts', key: 'ACCOUNT_' + r, label: r.toLowerCase(), help: 'username:password', secret: true })),
   { group: 'Test data', key: 'QA_EMPLOYEE_EID', label: 'Test employee ID', help: 'Every test record is applied to this employee only.' },
+  { group: 'Test data', key: 'QA_EMPLOYEE_EID_2', label: 'Second test employee ID', help: 'Optional. Only for the edit tests that move a record to another employee.' },
   { group: 'Test data', key: 'QA_FILES_DIR', label: 'Reference files folder', help: 'Folder with valid-document.pdf etc.', placeholder: 'test-files' },
   { group: 'Test data', key: 'ALLOW_RISKY_PAGES', label: 'Allow risky pages', help: 'true = allow Rates, Gov tables, Payments, Users, Settings... (can affect everyone).', placeholder: 'false' },
   { group: 'Test data', key: 'ALLOW_DATA_ON_DOTNET', label: 'Allow test data on .NET', help: 'true = unlock writing on .NET. Every run still asks you to type DOTNET.', placeholder: 'false' },
@@ -175,6 +176,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/coverage') {
       const r = await runForSummary('run-dp.js', ['--coverage']);
       return send(res, 200, r.summary || { groups: [] });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/dp-ids') {
+      // The automated DP rows (ID, page, scenario) for the Data tab's range picker.
+      const r = await runForSummary('run-dp.js', ['--list-ids']);
+      if (!r.summary || r.summary.error) return send(res, 500, { error: r.summary?.error || r.lines.slice(-3).join(' ') });
+      return send(res, 200, { ids: r.summary.ids });
     }
     return send(res, 404, { error: 'not found' });
   } catch (e) {

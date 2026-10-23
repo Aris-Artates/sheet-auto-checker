@@ -120,11 +120,16 @@ export async function saveOutcome(page) {
   return { ok: false, note: 'No success or error message after ' + config.pageTimeoutMs / 1000 + 's' };
 }
 
-/** A row's delete control. Tables name it "delete", "delete-cA"... or short "d-paOA", "d-bt", "d-pdSSS"...; some only have the trash icon. */
-export const DELETE_BTN = '[data-action^="delete"], [data-action^="d-"], i.fa-trash';
+/**
+ * A row's delete control. Tables name it "delete", "delete-cA"... or short "d-paOA", "d-bt", "d-pdSSS"...; some only have the trash icon.
+ * Not "d-exclude-emp": the by-employee rows' Exclude Employee icon also starts with "d-".
+ */
+export const DELETE_BTN = '[data-action^="delete"], [data-action^="d-"]:not([data-action="d-exclude-emp"]), i.fa-trash';
+/** A row's edit link (pencil). */
+export const EDIT_LINK = 'a[href*="/edit"]';
 
 /** The "by record" view of a list page: deductions call it by-trans, additions/benefits by-eligibility. */
-export async function findInList(page, listUrl, marker) {
+export async function findInList(page, listUrl, marker, { need = DELETE_BTN } = {}) {
   // Benefits lists never show the description (the name cell is always the benefit's name), and their by-employee
   // view has no per-record rows: look the record up in by-eligibility's row data and find it by its Reference.
   const benefits = listUrl.includes('/benefits/');
@@ -140,7 +145,7 @@ export async function findInList(page, listUrl, marker) {
       // and pick the exact row by its full text (shown in the cell, or kept in data-full-text).
       if (await search.isVisible().catch(() => false)) await search.fill(marker.slice(0, 20).trim());
       const row = rows.filter({ hasText: marker }).or(rows.filter({ has: page.locator(`[data-full-text="${marker}"]`) }))
-        .filter({ has: page.locator(DELETE_BTN) }).first();
+        .filter({ has: page.locator(need) }).first();
       if (await row.waitFor({ timeout: 12000 }).then(() => true).catch(() => false)) return row;
       continue;
     }
@@ -149,7 +154,7 @@ export async function findInList(page, listUrl, marker) {
     if (await search.isVisible().catch(() => false)) await search.fill(ref);
     // Match the whole cell: a row's text runs its cells together ("...21RA-0471Rice..."), so no word boundaries.
     const refCell = page.locator('td', { hasText: new RegExp(`^\\s*${ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) });
-    const byRef = rows.filter({ has: refCell }).filter({ has: page.locator(DELETE_BTN) }).first();
+    const byRef = rows.filter({ has: refCell }).filter({ has: page.locator(need) }).first();
     if (await byRef.waitFor({ timeout: 8000 }).then(() => true).catch(() => false)) return byRef;
   }
   throw new Error('not found');

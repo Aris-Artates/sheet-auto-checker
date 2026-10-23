@@ -16,6 +16,8 @@ const WRITE_TEXT = /^\s*(\+\s*)?(add|add new|create|new|edit|update|delete|remov
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const origin = url => new URL(url).origin;
 export const pathOf = url => new URL(url).pathname.replace(/\/+$/, '') || '/';
+/** "/payroll/rates/add/salary" -> "/payroll/rates", "/payroll/deduction/fuel/add" -> "/payroll/deduction/fuel" */
+export const listPathOf = url => pathOf(url).replace(/\/(add|edit|view)(\/.*)?$/, '').replace(/\/file\/generate$/, '');
 
 /**
  * Wait until the app's full-screen loading splash (PreLoader) and any skeleton placeholders

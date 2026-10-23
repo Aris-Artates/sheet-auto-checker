@@ -3,7 +3,7 @@
  * npm run qa -- [options]
  *   --roles payroll_officer,employee   only these TC sheets (default: every TC sheet with an account in .env)
  *   --env vercel|dotnet|both           which environment (default vercel)
- *   --only PO-0001,PO-0042             only these TC IDs
+ *   --only PO-0001,PO-0042             only these TC IDs; ranges too: PO-0001..PO-0050, PO-0100.. (to the end of its sheet)
  *   --ids-file ids.txt                 only the IDs in this file (one per line; "PO-0001@vercel" limits to one environment)
  *   --module "Payroll Deduction,Benefits"  only rows of these modules (comma-separated)
  *   --limit 20                         stop after N checks per role
@@ -21,6 +21,7 @@ import { notify, summaryLine } from './notify.js';
 import { loadFromWebapp, loadFromXlsx, pushResults, writeCsv } from './sheet.js';
 import { login, logout, open, origin, waitForSplash } from './app.js';
 import { ruleFor, checkSidebar } from './rules.js';
+import { parseSelection, selectIds } from './selection.js';
 
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i < 0 ? dflt : (args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : true); };
@@ -29,7 +30,10 @@ const list = v => (typeof v === 'string' ? v.split(',').map(s => s.trim()).filte
 const envKeys = opt('env', 'vercel') === 'both' ? ['vercel', 'dotnet'] : [opt('env', 'vercel')];
 if (envKeys.some(k => !ENVS[k])) throw new Error('--env must be vercel, dotnet or both');
 const wantRoles = list(opt('roles'))?.map(r => 'TC - ' + r);
-let only = list(opt('only'));
+let only = null;
+const badSelection = e => { console.error('\n' + e.message); process.exit(1); };
+let selection;
+try { selection = parseSelection(typeof opt('only') === 'string' ? opt('only') : null); } catch (e) { badSelection(e); }
 // --ids-file: "PO-0001" (both environments) or "PO-0001@vercel" / "PO-0001@dotnet" (one).
 const idEnvs = new Map();
 if (typeof opt('ids-file') === 'string') {
@@ -39,7 +43,7 @@ if (typeof opt('ids-file') === 'string') {
     if (!idEnvs.has(id)) idEnvs.set(id, new Set());
     if (e) idEnvs.get(id).add(e); else Object.keys(ENVS).forEach(k => idEnvs.get(id).add(k));
   }
-  only = [...idEnvs.keys()];
+  only = new Set(idEnvs.keys());
 }
 const wantedOn = (id, env) => !idEnvs.size || idEnvs.get(id)?.has(env);
 const modules = list(opt('module'));
@@ -50,8 +54,9 @@ const outDir = path.join(ROOT, 'results', 'run-' + stamp);
 
 const xlsx = opt('xlsx');
 const all = typeof xlsx === 'string' ? await loadFromXlsx(xlsx, wantRoles) : await loadFromWebapp(wantRoles);
+if (selection) try { only = selectIds(all.filter(r => r.sheet.startsWith('TC - ')), selection); } catch (e) { badSelection(e); }
 const tcRows = all.filter(r => r.sheet.startsWith('TC - '))
-  .filter(r => !only || only.includes(r.id))
+  .filter(r => !only || only.has(r.id))
   .filter(r => !modules || modules.includes(r.module));
 
 const bySheet = new Map();

@@ -64,7 +64,8 @@ All groups are automated; none has been verified on a live run yet.
 | Payroll Additions (3 pages) | "Add" rows | test employee only |
 | Benefits (6 pages) | "Add" rows | test employee only |
 | Boom Truck, Longevity, SSS / PhilHealth / HDMF contributions | Yes | contribution "Compensation" boxes are not wired to the save (reported as a known bug) |
-| Employees + master data | Yes (gov-ID / email / social-link rows stay manual) | creates and deletes throw-away `AUTO-DP...` employees |
+| Employees + master data | Yes (gov-ID / email / social-link rows stay manual) | creates and deletes throw-away `QA-AUTO...` / `QAAUTO...` records |
+| Computed pages (OT, Holiday, Night Shift, Absences, WTax Due) | Edit locks only | read-only: checks there is no edit |
 | Rates + Gov tables (risky) | Yes | gov tables dated Dec 2030 so they are never active today; salary-rate conflicts are cancelled, never proceeded |
 | Payments, Leave, Users, Officers (risky) | Yes, partly | see below |
 
@@ -78,6 +79,41 @@ All groups are automated; none has been verified on a live run yet.
 
 Data-test results check save, list and delete; they are marked `PARTIAL` until the payroll
 cutoff / payslip checks are added.
+
+## Edit tests (ticket 2161)
+
+`src/edit-catalog/` holds every "Edit: ..." test case: each page's frequency switches
+(15th <-> end of month, One Time <-> Regular <-> Installment, Indefinite <-> an end date), one
+extra letter in each text field, cleared required fields, attachment swaps, editing a record into
+a copy of another one, and the pages / roles that must **block** an edit (protected gov tables,
+locked names and taxable flags, view-only roles, pages with no edit at all). Each row's Expected
+Result says what the app should do; a `Known gap:` note says where it does something else today.
+
+**Adding the rows to the sheet** (once, by the sheet owner):
+
+1. `npm run make-edit-rows` writes `apps-script/AddEditRows.gs` from the catalog.
+2. In the sheet: **Extensions > Apps Script**, add a file, paste it, and run `addEditRows()`.
+   It appends the rows to each DP tab with the next TC IDs (DPPD-0559...). Running it again
+   only adds rows whose Page + Scenario are not in the tab yet.
+
+**What the runner does with them:**
+
+| Rows | Automated |
+|---|---|
+| Deductions, Additions, Benefits (the shared V2 form) | Yes: create a QA-AUTO record, edit it, save, reopen it and check the change stuck, delete it. Switching to All Employees / a branch / a department stays manual (Blocked): it would write to other employees. |
+| Department, Branch, Employment Type, Pay Group | Yes (renames, duplicates, blanks, no-changes) |
+| Pages with no edit, protected gov tables, view-only roles | Yes, read-only |
+| Boom Truck, Longevity, contributions, rates, gov-table data, employees, payments, leave, users, approvals | Not yet: the rows are in the sheet for manual testing |
+
+Optional settings: `QA_EMPLOYEE_EID_2` (a second test employee, for "Applicable To another
+employee"), `ACCOUNT_PAYROLL_MGMT` and `ACCOUNT_EMPLOYEE` (the view-only / access-denied checks).
+
+## Picking tests by ID
+
+`--only` (both runners, and the Data tests tab) takes single IDs and ranges in sheet order:
+`DPPD-0559..DPPD-0600` (inclusive), `DPB-0241..` (to the end of that tab), `..DPB-0020`
+(from the start). Separate several with commas. In the UI: **Load test IDs**, click a row to
+start a range, click another to end it; leave it open to run to the end of the tab.
 
 ## Connecting the sheet (one time, by the sheet owner)
 
