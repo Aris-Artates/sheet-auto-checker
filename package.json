@@ -13,7 +13,8 @@
     "make-test-files": "node src/make-big-files.js",
     "make-edit-rows": "node src/make-edit-rows.js",
     "qa:summary": "node src/run-summary.js",
-    "test:summary-check": "node src/summary-check/rules.test.js"
+    "test:summary-check": "node src/summary-check/rules.test.js",
+    "qa:retest-failed": "node src/retest-failed.js"
   },
   "dependencies": {
     "dotenv": "16.4.5",
